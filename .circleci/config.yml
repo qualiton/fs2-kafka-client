@@ -107,7 +107,7 @@ jobs:
           - "dependencies-{{ .Branch }}"
 
     - run:
-        command: "sbt publish"
+        command: "sbt releaseEarly"
         no_output_timeout: 20m
 
 workflows:
