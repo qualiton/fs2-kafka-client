@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder>
+            <pattern>%date{ISO8601} %-5level[%thread] %logger{0} %X{} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--<logger name="akka" level="INFO" />-->
+    <!--<logger name="org.apache" level="WARN" />-->
+    <!--<logger name="requestLogger" level="INFO"/>-->
+    <!--<logger name="com.google.api.client.http" level="INFO" />-->
+    <!--<logger name="com.spotify.docker.client.LoggingPullHandler" level="OFF" />-->
+    <!--<logger name="org.apache.kafka" level="WARN" />-->
+    <!--<logger name="org.apache.kafka.clients.consumer.internals.ConsumerCoordinator" level="DEBUG" />-->
+    <!--&lt;!&ndash;<logger name="org.apache.http" level="TRACE"/>&ndash;&gt;-->
+
+    <!--<logger name="com.ovoenergy.comms.audit" level="DEBUG" />-->
+
+
+    <root level="OFF">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>
