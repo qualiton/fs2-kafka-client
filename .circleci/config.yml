@@ -37,7 +37,6 @@ jobs:
         paths:
           - "fs2-kafka-client"
 
-
   test:
     working_directory: "~/projects/fs2-kafka-client"
 
