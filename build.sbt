@@ -68,6 +68,15 @@ lazy val `fs2-kafka-client` = (project in file("."))
           ScmInfo(url("https://github.com/ovotech/fs2-kafka-client"),
                   "scm:git:git@github.com:ovotech/fs2-kafka-client.git")),
         releaseEarlyWith := BintrayPublisher,
+        releaseEarlyEnableSyncToMaven := false,
+        releaseEarlyNoGpg := true,
+        bintrayOrganization := Some("ovotech"),
+        bintrayRepository := "maven",
+        bintrayPackageLabels := Seq(
+          "fs2",
+          "kafka",
+          "streaming"
+        ),
         version ~= (_.replace('+', '-')),
         dynver ~= (_.replace('+', '-'))
       )),
