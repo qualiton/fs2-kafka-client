@@ -65,7 +65,9 @@ lazy val `fs2-kafka-client` = (project in file("."))
         scmInfo := Some(
           ScmInfo(url("https://github.com/ovotech/fs2-kafka-client"),
                   "scm:git:git@github.com:ovotech/fs2-kafka-client.git")),
-        releaseEarlyWith := BintrayPublisher
+        releaseEarlyWith := BintrayPublisher,
+        version ~= (_.replace('+', '-')),
+        dynver ~= (_.replace('+', '-'))
       )),
     name := "fs2-kafka-client",
     libraryDependencies ++= Seq(
