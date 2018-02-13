@@ -8,6 +8,9 @@ lazy val `fs2-kafka-client` = (project in file("."))
         licenses := Seq(
           "Apache-2.0" -> url("https://opensource.org/licenses/apache-2.0")),
         organization := "com.ovoenergy",
+        developers := List(
+          Developer("filippo.deluca", "Filippo De Luca", "filippo.deluca@ovoenergy.com", url("http://filippodeluca.com"))
+        ),
         scalaVersion := "2.12.4",
         scalafmtOnCompile := true,
         scalacOptions ++= Seq(
@@ -61,7 +64,6 @@ lazy val `fs2-kafka-client` = (project in file("."))
         ),
         testOptions in Test += Tests.Argument("-oF"),
         javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
-        releaseEarlyNoGpg := true,
         scmInfo := Some(
           ScmInfo(url("https://github.com/ovotech/fs2-kafka-client"),
                   "scm:git:git@github.com:ovotech/fs2-kafka-client.git")),
