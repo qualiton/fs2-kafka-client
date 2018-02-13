@@ -90,7 +90,7 @@ jobs:
     - persist_to_workspace:
         root: ~/projects
         paths:
-          - "audit"
+          - "fs2-kafka-client"
 
   publish:
     working_directory: "~/projects/fs2-kafka-client"
