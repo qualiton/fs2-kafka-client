@@ -3,7 +3,7 @@ import sbt._
 
 import scala.util.Try
 
-object Release extends AutoPlugin {
+object Versioning extends AutoPlugin {
 
   // It is from sbt-release plugin
   object Version {
