@@ -15,10 +15,11 @@ trait Consuming {
 
   private val log = LoggerFactory.getLogger(getClass)
 
-  def consume[F[_]: Sync, K, V](subscription: Subscription,
-                                keyDeserializer: Deserializer[K],
-                                valueDeserializer: Deserializer[V],
-                                settings: ConsumerSettings): Stream[F, ConsumerRecord[K, V]] = {
+  def consume[F[_]: Sync, K, V](
+      subscription: Subscription,
+      keyDeserializer: Deserializer[K],
+      valueDeserializer: Deserializer[V],
+      settings: ConsumerSettings): Stream[F, ConsumerRecord[K, V]] = {
 
     consumerStream[F, K, V](keyDeserializer, valueDeserializer, settings)
       .flatMap { consumer =>
