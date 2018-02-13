@@ -9,7 +9,10 @@ lazy val `fs2-kafka-client` = (project in file("."))
           "Apache-2.0" -> url("https://opensource.org/licenses/apache-2.0")),
         organization := "com.ovoenergy",
         developers := List(
-          Developer("filippo.deluca", "Filippo De Luca", "filippo.deluca@ovoenergy.com", url("http://filippodeluca.com"))
+          Developer("filippo.deluca",
+                    "Filippo De Luca",
+                    "filippo.deluca@ovoenergy.com",
+                    url("http://filippodeluca.com"))
         ),
         scalaVersion := "2.12.4",
         scalafmtOnCompile := true,
