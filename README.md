@@ -2,6 +2,7 @@
 This is a tiny fs2 wrapper around the Kafka java client.
 
 [![CircleCI](https://circleci.com/gh/ovotech/fs2-kafka-client.svg?style=svg)](https://circleci.com/gh/ovotech/fs2-kafka-client)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/7a33158494af4a17a682106fef376625)](https://www.codacy.com/app/filippo-deluca/fs2-kafka-client?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ovotech/fs2-kafka-client&amp;utm_campaign=Badge_Grade)
 [![Download](https://api.bintray.com/packages/ovotech/maven/fs2-kafka-client/images/download.svg) ](https://bintray.com/ovotech/maven/fs2-kafka-client/_latestVersion)  
 
 ## Installation

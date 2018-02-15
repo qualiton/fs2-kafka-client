@@ -53,11 +53,33 @@ jobs:
           - "dependencies-{{ .Branch }}"
 
     - run:
-        command: "sbt test"
+        command: "sbt coverage test"
         no_output_timeout: 20m
+
+    - run:
+        command: "sbt coverageReport"
+        no_output_timeout: 20m
+
+    - run:
+        command: "sbt codacyCoverage"
+        no_output_timeout: 20m
+
+    - store_test_results:
+        path: target/test-reports
 
     - store_artifacts:
         path: target/test-reports
+
+    - store_artifacts:
+        path: target/scala-2.12/scoverage-report
+
+    - store_artifacts:
+        path: target/scala-2.12/coverage-report
+
+    - persist_to_workspace:
+        root: ~/projects
+        paths:
+          - "fs2-kafka-client"
 
   tag:
     working_directory: "~/projects/fs2-kafka-client"

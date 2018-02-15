@@ -3,7 +3,7 @@ package com.ovoenergy.fs2.kafka
 import cats.effect.{Async, Sync}
 import com.ovoenergy.fs2.kafka.Producing.{
   ProduceRecordPartiallyApplied,
-  ProducerPartiallyApplied,
+  ProducePartiallyApplied,
   ProducerStreamPartiallyApplied
 }
 import fs2._
@@ -20,8 +20,8 @@ trait Producing {
   /**
     * Provides a `Pipe[F, ProducerRecord[K, V], RecordMetadata]` that will send each record to kafka.
     */
-  def produce[F[_]]: ProducerPartiallyApplied[F] =
-    new ProducerPartiallyApplied[F]
+  def produce[F[_]]: ProducePartiallyApplied[F] =
+    new ProducePartiallyApplied[F]
 
   /**
     * Provides a `Stream[F, Producer[K,V]]` that will automatically close the producer when completed.
@@ -39,7 +39,7 @@ trait Producing {
 
 object Producing {
 
-  private[kafka] final class ProducerPartiallyApplied[F[_]](
+  private[kafka] final class ProducePartiallyApplied[F[_]](
       val dummy: Boolean = true)
       extends AnyVal {
     def apply[K, V](settings: ProducerSettings,
