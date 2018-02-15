@@ -1,6 +1,7 @@
 import Dependencies._
 
 lazy val `fs2-kafka-client` = (project in file("."))
+  .enablePlugins(TutPlugin)
   .settings(
     inThisBuild(
       List(
@@ -8,6 +9,8 @@ lazy val `fs2-kafka-client` = (project in file("."))
         licenses := Seq(
           "Apache-2.0" -> url("https://opensource.org/licenses/apache-2.0")),
         organization := "com.ovoenergy",
+        organizationName := "OVO Energy",
+        organizationHomepage := Some(url("https://github.com/ovotech")),
         developers := List(
           Developer("filippo.deluca",
                     "Filippo De Luca",
@@ -84,6 +87,7 @@ lazy val `fs2-kafka-client` = (project in file("."))
         dynver ~= (_.replace('+', '-'))
       )),
     name := "fs2-kafka-client",
+    description := "A tiny fs2 wrapper around the Kafka java client",
     libraryDependencies ++= Seq(
       fs2.core,
       kafka.clients,
@@ -93,5 +97,6 @@ lazy val `fs2-kafka-client` = (project in file("."))
       logback.classic % Test,
       scalaTest % Test,
       embeddedKafka % Test
-    )
+    ),
+    tutTargetDirectory := baseDirectory.value
   )

@@ -11,9 +11,15 @@ To get started with SBT, simply add the following lines to your build.sbt file.
 libraryDependencies += "com.ovoenergy" %% "fs2-kafka-client" % "<latest version>"
 ```
 
+```tut:book
+import scala.concurrent.duration._
+
+val d = 5.seconds
+```
+
 ## Consuming
 To consume records without committing or with auto-commit:
-```scala
+```tut
 import com.ovoenergy.fs2.kafka._
 import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
@@ -41,7 +47,7 @@ val consumedRecords = consume[IO](
 ```
 
 To consume records, apply a function for each record and commit:
-```scala
+```tut:silent
 import com.ovoenergy.fs2.kafka._
 import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
@@ -78,7 +84,7 @@ in parallel up to the parallelism set into the `ConsumerSettings`.
 ## Producing
 The producer is available as effectfull function:
 
-```scala
+```tut:silent
 import com.ovoenergy.fs2.kafka._
 import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
@@ -96,7 +102,7 @@ produceRecord[IO](producer, new ProducerRecord[String, String](topic, key, value
 ```
 
 The producer itself is available trough a `Stream`:
-```scala
+```tut:silent
 import com.ovoenergy.fs2.kafka._
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization._
