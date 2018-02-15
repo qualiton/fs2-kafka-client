@@ -1,7 +1,6 @@
 package com.ovoenergy.fs2.kafka
 
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
-import org.scalatest.{Matchers, WordSpec}
 import cats.effect.IO
 import org.apache.kafka.clients.consumer.{
   ConsumerConfig,
@@ -20,7 +19,7 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.collection.JavaConverters._
 
-class KafkaSpec extends WordSpec with Matchers with EmbeddedKafka {
+class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
   implicit val stringSerializer: Serializer[String] = new StringSerializer
   implicit val stringDeserializer: Deserializer[String] = new StringDeserializer
@@ -48,10 +47,10 @@ class KafkaSpec extends WordSpec with Matchers with EmbeddedKafka {
 
       publishToKafka(topic, produced)
 
-      val consumed = consume[IO, String, String](TopicSubscription(Set(topic)),
-                                                 new StringDeserializer,
-                                                 new StringDeserializer,
-                                                 settings)
+      val consumed = consume[IO](TopicSubscription(Set(topic)),
+                                 new StringDeserializer,
+                                 new StringDeserializer,
+                                 settings)
         .take(1000)
         .map(r => r.key() -> r.value())
         .compile
@@ -89,14 +88,14 @@ class KafkaSpec extends WordSpec with Matchers with EmbeddedKafka {
         publishToKafka(topic, produced)
 
         val consumeStream =
-          consumeProcessAndCommit[IO, String, String, (Int, Long)](
+          consumeProcessAndCommit[IO](
             TopicSubscription(Set(topic)),
             new StringDeserializer,
             new StringDeserializer,
-            settings, { x =>
-              IO(x.partition() -> x.offset())
-            }
-          ).take(100)
+            settings
+          ) { record =>
+            IO(record.partition() -> record.offset())
+          }.take(100)
 
         val committedOffsets =
           consumeStream.compile.toVector.unsafeRunSync().groupBy(_._1).map {
@@ -151,32 +150,30 @@ class KafkaSpec extends WordSpec with Matchers with EmbeddedKafka {
         val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
         publishToKafka(sourceTopic, produced)
 
-        val stream =
-          producerStream[IO, String, String](producerSettings,
-                                             stringSerializer,
-                                             stringSerializer).flatMap {
-            producer =>
-              def process(record: ConsumerRecord[String, String])
-                : IO[RecordMetadata] = {
-                produceRecord[IO, String, String](producer)(
-                  new ProducerRecord[String, String](destinationTopic,
-                                                     record.key(),
-                                                     record.value()))
-              }
-
-              consumeProcessAndCommit[IO, String, String, RecordMetadata](
-                TopicSubscription(Set(sourceTopic)),
-                new StringDeserializer,
-                new StringDeserializer,
-                consumerSettings, { x =>
-                  process(x)
-                }
-              )
+        val stream = producerStream[IO](producerSettings,
+                                        stringSerializer,
+                                        stringSerializer).flatMap { producer =>
+          def process(
+              record: ConsumerRecord[String, String]): IO[RecordMetadata] = {
+            produceRecord[IO](
+              producer,
+              new ProducerRecord[String, String](destinationTopic,
+                                                 record.key(),
+                                                 record.value()))
           }
+
+          consumeProcessAndCommit[IO](
+            TopicSubscription(Set(sourceTopic)),
+            new StringDeserializer,
+            new StringDeserializer,
+            consumerSettings
+          )(process)
+        }
 
         stream.take(1000).compile.toVector.unsafeRunSync()
 
-        val messages = consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
+        val messages =
+          consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
 
         messages should contain theSameElementsAs produced
       }
