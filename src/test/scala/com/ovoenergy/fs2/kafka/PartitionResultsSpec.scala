@@ -15,24 +15,25 @@ class PartitionResultsSpec extends BaseUnitSpec {
     }
 
     "a result is added" should {
-      "contain the given result" in {
+      "contain the given result and offset" in {
         val underTest = PartitionResults.empty[Int](
           new TopicPartition("test-1", 0),
-          new OffsetAndMetadata(9)) :+ 1
+          new OffsetAndMetadata(9)) :+ RecordResult(1,
+                                                    new OffsetAndMetadata(123))
 
         underTest.results should contain only 1
+        underTest.offset shouldBe new OffsetAndMetadata(123)
       }
 
-      "retain topic, partition and offset" in {
+      "retain topic and partition" in {
 
         val initial =
           PartitionResults.empty[Int](new TopicPartition("test-1", 0),
                                       new OffsetAndMetadata(9))
 
-        val underTest = initial :+ 1
+        val underTest = initial :+ RecordResult(1, new OffsetAndMetadata(123))
 
         underTest.topicPartition shouldBe initial.topicPartition
-        underTest.offset shouldBe initial.offset
       }
     }
 
@@ -41,9 +42,26 @@ class PartitionResultsSpec extends BaseUnitSpec {
         val initial =
           PartitionResults.empty[Int](new TopicPartition("test-1", 0),
                                       new OffsetAndMetadata(9))
-        val underTest = initial :+ 1 :+ 2
+
+        val resultOne = RecordResult(1, new OffsetAndMetadata(123))
+        val resultTwo = RecordResult(2, new OffsetAndMetadata(124))
+
+        val underTest = initial :+ resultOne :+ resultTwo
 
         underTest.results should contain theSameElementsInOrderAs List(1, 2)
+      }
+
+      "contain the last result offset" in {
+        val initial =
+          PartitionResults.empty[Int](new TopicPartition("test-1", 0),
+                                      new OffsetAndMetadata(9))
+
+        val resultOne = RecordResult(1, new OffsetAndMetadata(123))
+        val resultTwo = RecordResult(2, new OffsetAndMetadata(124))
+
+        val underTest = initial :+ resultOne :+ resultTwo
+
+        underTest.offset shouldBe resultTwo.offset
       }
     }
   }

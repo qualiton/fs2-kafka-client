@@ -108,7 +108,7 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             case (partition, offset) =>
               consumer
                 .committed(new TopicPartition(topic, partition))
-                .offset() shouldBe offset
+                .offset() shouldBe offset + 1
           }
         }
     }

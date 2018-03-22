@@ -163,11 +163,14 @@ object Consuming {
 
     val partitionStreams = batch.partitions.asScala.toSeq.map { tp =>
       val records = batch.records(tp).asScala
-      val offsetAndMetadata = new OffsetAndMetadata(records.last.offset())
+      val offsetAndMetadata = new OffsetAndMetadata(records.head.offset())
 
       Stream
         .emits(records)
-        .evalMap(f)
+        .evalMap { record =>
+          f(record).map(result =>
+            RecordResult(result, new OffsetAndMetadata(record.offset() + 1)))
+        }
         .fold(PartitionResults.empty[O](tp, offsetAndMetadata))(_ :+ _)
     }
 
