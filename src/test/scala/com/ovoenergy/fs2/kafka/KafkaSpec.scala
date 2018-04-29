@@ -77,7 +77,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
         )
@@ -95,6 +94,59 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             settings
           ) { record =>
             IO(record.partition() -> record.offset())
+          }.take(100)
+
+        val committedOffsets =
+          consumeStream.compile.toVector.unsafeRunSync().groupBy(_._1).map {
+            case (p, offsets) =>
+              p -> offsets.map(_._2).max
+          }
+
+        withKafkaConsumer[String, String, Unit](settings) { consumer =>
+          committedOffsets.foreach {
+            case (partition, offset) =>
+              consumer
+                .committed(new TopicPartition(topic, partition))
+                .offset() shouldBe offset + 1
+          }
+        }
+    }
+  }
+
+  "consumeProcessBatchAndCommit" should {
+    "commit offsets returned by processing function" in withRunningKafkaOnFoundPort(
+      EmbeddedKafkaConfig(customConsumerProperties =
+        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      config =>
+        val topic = "test-2"
+        val groupId = "test-2"
+
+        val settings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
+        )
+
+        createCustomTopic(topic, partitions = 3)
+
+        val produced = (0 until 100).map(i => s"key-$i" -> s"value->$i")
+        publishToKafka(topic, produced)
+
+        val consumeStream =
+          consumeProcessBatchAndCommit[IO](
+            TopicSubscription(Set(topic)),
+            new StringDeserializer,
+            new StringDeserializer,
+            settings
+          ) { records =>
+            IO.pure(records.map(record =>
+              (record.partition, record.offset) ->
+                Offset(record.offset)))
           }.take(100)
 
         val committedOffsets =
