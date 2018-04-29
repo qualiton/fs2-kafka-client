@@ -2,11 +2,7 @@ package com.ovoenergy.fs2.kafka
 
 import cats.effect.{Async, Effect, Sync}
 import cats.syntax.all._
-import com.ovoenergy.fs2.kafka.Consuming.{
-  ConsumePartiallyApplied,
-  ConsumeProcessAndCommitPartiallyApplied,
-  ConsumerStreamPartiallyApplied
-}
+import com.ovoenergy.fs2.kafka.Consuming._
 import fs2._
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.TopicPartition
@@ -27,18 +23,30 @@ trait Consuming {
   def consume[F[_]]: ConsumePartiallyApplied[F] = new ConsumePartiallyApplied[F]
 
   /**
-    * Consume records from the given subscription, for each of them apply the given process function and commit back to
-    * kafka.
+    * Consume records from the given subscription, and apply the provided function on each record,
+    * and commit the offsets to Kafka. The records in each topic/partition will be processed in
+    * sequence, while multiple topic/partitions will be processed in parallel, up to the
+    * specified parallelism.
     *
-    * The records in each topic/partitionp air are processed in sequence. Each topic/partitionp is processed in parallel
-    * up to the given parallelism.
-    *
-    * The result of the processing is returned as `Stream[F, O]` where O if the return type of the given process
-    * function.
+    * The result of the processing is a `Stream[F, O]` where `O` is the
+    * return type of the provided function.
     */
   def consumeProcessAndCommit[F[_]]
     : ConsumeProcessAndCommitPartiallyApplied[F] =
     new ConsumeProcessAndCommitPartiallyApplied[F]
+
+  /**
+    * Consume records from the given subscription, and apply the provided function on each batch
+    * of records, and commit the offsets to Kafka. The records in each topic/partition will be
+    * processed in sequence, while multiple topic/partitions will be processed in parallel,
+    * up to the specified parallelism.
+    *
+    * The result of the processing is a `Stream[F, O]` where `O` is the
+    * return type of the provided function.
+    */
+  def consumeProcessBatchAndCommit[F[_]]
+    : ConsumeProcessBatchAndCommitPartiallyApplied[F] =
+    new ConsumeProcessBatchAndCommitPartiallyApplied[F]
 
   /**
     * Provides a `Stream[F, Consumer[K,V]]` that will automatically close the consumer when completed.
@@ -89,6 +97,29 @@ object Consuming {
               processBatchAndCommit(consumer)(batch,
                                               processRecord,
                                               settings.maxParallelism)
+            }
+        }
+    }
+  }
+
+  private[kafka] final class ConsumeProcessBatchAndCommitPartiallyApplied[F[_]](
+      val dummy: Boolean = true)
+      extends AnyVal {
+    def apply[K, V, O](subscription: Subscription,
+                       keyDeserializer: Deserializer[K],
+                       valueDeserializer: Deserializer[V],
+                       settings: ConsumerSettings)(
+        processRecordBatch: Chunk[ConsumerRecord[K, V]] => F[
+          Chunk[(O, Offset)]])(implicit F: Effect[F],
+                               ec: ExecutionContext): Stream[F, O] = {
+
+      consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        .flatMap { consumer =>
+          batchStream(consumer, subscription, settings)
+            .flatMap { batch =>
+              processBatchChunkAndCommit(consumer)(batch,
+                                                   processRecordBatch,
+                                                   settings.maxParallelism)
             }
         }
     }
@@ -151,6 +182,42 @@ object Consuming {
 
   private def closeConsumer[F[_]: Sync, K, V](c: Consumer[K, V]): F[Unit] = {
     Sync[F].delay(c.close()) >> Sync[F].delay(log.debug(s"Consumer closed"))
+  }
+
+  private def processBatchChunkAndCommit[F[_]: Effect, K, V, O](
+      consumer: Consumer[K, V])(
+      batch: ConsumerRecords[K, V],
+      f: Chunk[ConsumerRecord[K, V]] => F[Chunk[(O, Offset)]],
+      parallelism: Int)(implicit ec: ExecutionContext): Stream[F, O] = {
+
+    log.debug(s"Processing batchChunk $batch")
+
+    val partitionStreams = batch.partitions.asScala.toSeq.map { tp =>
+      val records = batch.records(tp).asScala
+      val offsetAndMetadata = new OffsetAndMetadata(records.head.offset())
+
+      Stream
+        .eval(f(Chunk.seq(records)))
+        .flatMap { chunk =>
+          Stream
+            .chunk(chunk)
+            .map {
+              case (result, Offset(offset)) =>
+                RecordResult(result, new OffsetAndMetadata(offset + 1L))
+            }
+        }
+        .fold(PartitionResults.empty[O](tp, offsetAndMetadata))(_ :+ _)
+    }
+
+    Stream
+      .emits(partitionStreams)
+      .join(parallelism)
+      .fold(BatchResults.empty[O])(_ :+ _)
+      .evalMap { batchResults =>
+        commit[F](consumer, batchResults.toCommit)
+          .map(_ => batchResults.results)
+      }
+      .flatMap(Stream.emits(_))
   }
 
   private def processBatchAndCommit[F[_]: Effect, K, V, O](
