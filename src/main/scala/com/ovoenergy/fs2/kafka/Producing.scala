@@ -1,16 +1,15 @@
 package com.ovoenergy.fs2.kafka
 
 import cats.effect.{Async, Sync}
-import com.ovoenergy.fs2.kafka.Producing.{
-  ProduceRecordPartiallyApplied,
-  ProducePartiallyApplied,
-  ProducerStreamPartiallyApplied
-}
+import cats.syntax.traverse._
+import com.ovoenergy.fs2.kafka.Producing._
 import fs2._
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization.Serializer
 
 import scala.collection.JavaConverters._
+import scala.concurrent.{ExecutionContext, Promise}
+import scala.util.{Failure, Success}
 
 /**
   * The Producing side of the Kafka client.
@@ -34,6 +33,14 @@ trait Producing {
     */
   def produceRecord[F[_]]: ProduceRecordPartiallyApplied[F] =
     new ProduceRecordPartiallyApplied[F]
+
+  /**
+    * Processes a `Chunk[(ProducerRecord[K, V], P)]`, sending the records to Kafka
+    * in the order they are provided. The passthrough values of type `P` are left
+    * as is in the output.
+    */
+  def produceRecordBatch[F[_]]: ProduceRecordBatchPartiallyApplied[F] =
+    new ProduceRecordBatchPartiallyApplied[F]()
 
 }
 
@@ -96,6 +103,38 @@ object Producing {
 
         ()
       }
+    }
+  }
+
+  private[kafka] final class ProduceRecordBatchPartiallyApplied[F[_]](
+      val dummy: Boolean = true)
+      extends AnyVal {
+    def apply[K, V, P](producer: Producer[K, V],
+                       recordBatch: Chunk[(ProducerRecord[K, V], P)])(
+        implicit F: Async[F],
+        E: ExecutionContext): F[Chunk[(RecordMetadata, P)]] = {
+      F.flatten(F.delay {
+        recordBatch.traverse {
+          case (record, p) =>
+            val promise = Promise[(RecordMetadata, P)]()
+
+            producer.send(
+              record,
+              (metadata: RecordMetadata, exception: Exception) =>
+                Option(exception) match {
+                  case Some(e) => promise.complete(Failure(e)); ()
+                  case None    => promise.complete(Success((metadata, p))); ()
+              }
+            )
+
+            F.async { cb =>
+              promise.future.onComplete {
+                case Success(result)    => cb(Right(result))
+                case Failure(exception) => cb(Left(exception))
+              }
+            }
+        }
+      })
     }
   }
 
