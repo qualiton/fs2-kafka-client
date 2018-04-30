@@ -2,6 +2,7 @@ package com.ovoenergy.fs2.kafka
 
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
+import fs2.Chunk
 import org.apache.kafka.clients.consumer.{
   ConsumerConfig,
   ConsumerRecord,
@@ -166,7 +167,7 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
     }
   }
 
-  "produce" should {
+  "produceRecord" should {
     "be composed with consumeProcessAndCommit" in withRunningKafkaOnFoundPort(
       EmbeddedKafkaConfig()) { config =>
       {
@@ -220,6 +221,75 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             new StringDeserializer,
             consumerSettings
           )(process)
+        }
+
+        stream.take(1000).compile.toVector.unsafeRunSync()
+
+        val messages =
+          consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
+
+        messages should contain theSameElementsAs produced
+      }
+
+    }
+  }
+
+  "produceRecordBatch" should {
+    "be composed with consumeProcessBatchAndCommit" in withRunningKafkaOnFoundPort(
+      EmbeddedKafkaConfig()) { config =>
+      {
+
+        val sourceTopic = "source"
+        val destinationTopic = "destination"
+
+        val groupId = "test-1"
+
+        val consumerSettings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
+        )
+
+        val producerSettings = ProducerSettings(
+          Map(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ProducerConfig.ACKS_CONFIG -> "all",
+            ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> "1"
+          )
+        )
+
+        createCustomTopic(sourceTopic, partitions = 6)
+        createCustomTopic(destinationTopic, partitions = 12)
+
+        val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
+        publishToKafka(sourceTopic, produced)
+
+        val stream = producerStream[IO](producerSettings,
+                                        stringSerializer,
+                                        stringSerializer).flatMap { producer =>
+          def processBatch(recordBatch: Chunk[ConsumerRecord[String, String]])
+            : IO[Chunk[(RecordMetadata, Offset)]] = {
+            produceRecordBatch[IO](producer, recordBatch.map { record =>
+              new ProducerRecord[String, String](
+                destinationTopic,
+                record.key(),
+                record.value()
+              ) -> Offset(record.offset())
+            })
+          }
+
+          consumeProcessBatchAndCommit[IO](
+            TopicSubscription(Set(sourceTopic)),
+            new StringDeserializer,
+            new StringDeserializer,
+            consumerSettings
+          )(processBatch)
         }
 
         stream.take(1000).compile.toVector.unsafeRunSync()
