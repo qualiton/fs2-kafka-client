@@ -1,5 +1,7 @@
 package com.ovoenergy.fs2.kafka
 
+import java.util
+
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
 import fs2.Chunk
@@ -24,6 +26,32 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
   implicit val stringSerializer: Serializer[String] = new StringSerializer
   implicit val stringDeserializer: Deserializer[String] = new StringDeserializer
+
+  implicit val intSerializer: Serializer[Int] = new Serializer[Int] {
+    private val delegate = new IntegerSerializer
+
+    override def configure(configs: util.Map[String, _], isKey: Boolean): Unit =
+      delegate.configure(configs, isKey)
+
+    override def serialize(topic: String, data: Int): Array[Byte] =
+      delegate.serialize(topic, data)
+
+    override def close(): Unit =
+      delegate.close()
+  }
+
+  implicit val intDeserializer: Deserializer[Int] = new Deserializer[Int] {
+    private val delegate = new IntegerDeserializer
+
+    override def configure(configs: util.Map[String, _], isKey: Boolean): Unit =
+      delegate.configure(configs, isKey)
+
+    override def close(): Unit =
+      delegate.close()
+
+    override def deserialize(topic: String, data: Array[Byte]): Int =
+      delegate.deserialize(topic, data)
+  }
 
   "consume" should {
     "return a Stream of kafka messages" in withRunningKafkaOnFoundPort(
@@ -111,6 +139,51 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
                 .offset() shouldBe offset + 1
           }
         }
+    }
+  }
+
+  "consumeProcessAndCommit" should {
+    "fail if the process function fail" in withRunningKafkaOnFoundPort(
+      EmbeddedKafkaConfig(customConsumerProperties =
+        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      config =>
+        val topic = "test-1"
+        val groupId = "test-1"
+
+        val settings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
+        )
+
+        createCustomTopic(topic, partitions = 3)
+
+        val produced = (0 until 100).map(i => i -> i)
+        publishToKafka(topic, produced)
+
+        val expectedException = new RuntimeException("This is a test error")
+
+        val consumeStream =
+          consumeProcessAndCommit[IO](
+            TopicSubscription(Set(topic)),
+            intDeserializer,
+            intDeserializer,
+            settings
+          ) { record =>
+            if (record.key() > 10) {
+              IO.raiseError(expectedException)
+            } else {
+              IO.pure(())
+            }
+          }.take(100)
+
+        consumeStream.compile.toVector.attempt
+          .unsafeRunSync() shouldBe a[Left[_, _]]
     }
   }
 
@@ -226,7 +299,9 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
         stream.take(1000).compile.toVector.unsafeRunSync()
 
         val messages =
-          consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
+          consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
+                                                         1000,
+                                                         false)
 
         messages should contain theSameElementsAs produced
       }
@@ -295,7 +370,9 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
         stream.take(1000).compile.toVector.unsafeRunSync()
 
         val messages =
-          consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
+          consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
+                                                         1000,
+                                                         false)
 
         messages should contain theSameElementsAs produced
       }
