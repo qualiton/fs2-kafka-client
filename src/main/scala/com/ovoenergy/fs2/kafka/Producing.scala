@@ -1,14 +1,16 @@
 package com.ovoenergy.fs2.kafka
 
-import cats.effect.{Async, Sync}
+import cats.effect.{Async, Effect, IO, Sync}
 import cats.syntax.traverse._
+import cats.syntax.flatMap._
+import cats.syntax.functor._
 import com.ovoenergy.fs2.kafka.Producing._
 import fs2._
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization.Serializer
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Promise}
+import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success}
 
 /**
@@ -33,6 +35,10 @@ trait Producing {
     */
   def produceRecord[F[_]]: ProduceRecordPartiallyApplied[F] =
     new ProduceRecordPartiallyApplied[F]
+
+  def produceRecordWithBatching[F[_]]
+    : ProduceRecordWithBatchingPartiallyApplied[F] =
+    new ProduceRecordWithBatchingPartiallyApplied[F]()
 
   /**
     * Processes a `Chunk[(ProducerRecord[K, V], P)]`, sending the records to Kafka
@@ -106,6 +112,49 @@ object Producing {
     }
   }
 
+  private[kafka] final class ProduceRecordWithBatchingPartiallyApplied[F[_]](
+      val dummy: Boolean = true)
+      extends AnyVal {
+    def apply[K, V](producer: Producer[K, V], record: ProducerRecord[K, V])(
+        implicit F: Effect[F],
+        ec: ExecutionContext): F[F[RecordMetadata]] = {
+
+      fs2.async.promise[F, Either[Throwable, RecordMetadata]].flatMap {
+        promise =>
+          Effect[F]
+            .delay(producer.send(
+              record,
+              new Callback {
+                override def onCompletion(metadata: RecordMetadata,
+                                          exception: Exception): Unit = {
+                  Option(exception) match {
+                    case Some(e) =>
+                      Effect[F]
+                        .runAsync(promise.complete(Left(e))) {
+                          case Left(e)  => IO.raiseError(e)
+                          case Right(_) => IO(())
+                        }
+                        .unsafeRunSync()
+                    case None =>
+                      Effect[F]
+                        .runAsync(promise.complete(Right(metadata))) {
+                          case Left(e)  => IO.raiseError(e)
+                          case Right(_) => IO(())
+                        }
+                        .unsafeRunSync()
+                  }
+                }
+              }
+            ))
+            .map(_ =>
+              promise.get.flatMap {
+                case Left(e)   => Effect[F].raiseError(e)
+                case Right(rm) => Effect[F].pure(rm)
+            })
+      }
+    }
+  }
+
   private[kafka] final class ProduceRecordBatchPartiallyApplied[F[_]](
       val dummy: Boolean = true)
       extends AnyVal {
@@ -116,7 +165,7 @@ object Producing {
       F.flatten(F.delay {
         recordBatch.traverse {
           case (record, p) =>
-            val promise = Promise[(RecordMetadata, P)]()
+            val promise = scala.concurrent.Promise[(RecordMetadata, P)]()
 
             producer.send(
               record,

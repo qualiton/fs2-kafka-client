@@ -2,7 +2,7 @@ package com.ovoenergy.fs2.kafka
 
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
-import fs2.Chunk
+import fs2._
 import org.apache.kafka.clients.consumer.{
   ConsumerConfig,
   ConsumerRecord,
@@ -300,6 +300,53 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
         messages should contain theSameElementsAs produced
       }
 
+    }
+  }
+
+  "produceRecordWithBatching" should {
+    "batch" in withRunningKafkaOnFoundPort(EmbeddedKafkaConfig()) { config =>
+      {
+
+        val destinationTopic = "destination"
+
+        val producerSettings = ProducerSettings(
+          Map(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ProducerConfig.ACKS_CONFIG -> "all",
+            ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> "1"
+          )
+        )
+
+        val start = System.currentTimeMillis()
+        producerStream[IO](producerSettings, stringSerializer, stringSerializer)
+          .flatMap { producer =>
+            Stream
+              .iterate(0)(_ + 1)
+              .segmentN(100)
+              .flatMap(Stream.segment)
+              .evalMap[IO, IO[RecordMetadata]] { i =>
+                val record =
+                  new ProducerRecord[String, String](destinationTopic,
+                                                     s"key-$i",
+                                                     s"value-$i")
+                produceRecordWithBatching[IO].apply(producer, record)
+              }
+              // The buffer allow to put 1000 elements in the batch before waiting for the callback
+              .buffer(1000)
+              .evalMap(identity)
+              .take(100000)
+          }
+          .compile
+          .toVector
+          .unsafeRunSync()
+
+        println(System.currentTimeMillis() - start)
+
+        val messages =
+          consumeNumberKeyedMessagesFrom(destinationTopic, 1000, false)
+
+        messages should not be empty
+      }
     }
   }
 

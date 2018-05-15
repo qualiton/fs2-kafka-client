@@ -19,6 +19,7 @@
 
     <!--<logger name="com.ovoenergy.comms.audit" level="DEBUG" />-->
 
+    <!--<logger name="org.apache.kafka.clients.producer" level="TRACE" />-->
 
     <root level="OFF">
         <appender-ref ref="CONSOLE"/>
