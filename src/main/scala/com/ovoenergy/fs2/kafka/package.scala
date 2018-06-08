@@ -1,3 +1,8 @@
 package com.ovoenergy.fs2
 
-package object kafka extends Consuming with Producing
+import org.apache.kafka.clients.consumer.OffsetAndMetadata
+import org.apache.kafka.common.TopicPartition
+
+package object kafka extends Consuming with Producing {
+  type Offsets = Map[TopicPartition, OffsetAndMetadata]
+}

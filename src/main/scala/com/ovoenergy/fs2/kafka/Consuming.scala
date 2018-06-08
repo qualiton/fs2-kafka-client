@@ -5,7 +5,6 @@ import cats.syntax.all._
 import com.ovoenergy.fs2.kafka.Consuming._
 import fs2._
 import org.apache.kafka.clients.consumer._
-import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.Deserializer
 import org.slf4j.LoggerFactory
 
@@ -17,10 +16,31 @@ import scala.concurrent.ExecutionContext
   */
 trait Consuming {
 
+  sealed trait ResultOrOffsetsToCommit[T]
+
+  object ResultOrOffsetsToCommit {
+    case class Result[T](value: T) extends ResultOrOffsetsToCommit[T]
+    case class OffsetToCommit[T](offsets: Offsets)
+        extends ResultOrOffsetsToCommit[T]
+  }
+
   /**
     * Consume records from the given subscription and provides a `Stream[F, ConsumerRecord[K, V]]`.
     */
   def consume[F[_]]: ConsumePartiallyApplied[F] = new ConsumePartiallyApplied[F]
+
+  /**
+    * Consume records from the given subscription, and apply the provided function on each record,
+    * and/or commit the offsets to Kafka. The records in each topic/partition will be processed in
+    * sequence, while multiple topic/partitions will be processed in parallel, up to the
+    * specified parallelism.
+    *
+    * The result of the processing is a `Stream[F, O]` where `O` is the
+    * return type of the provided function.
+    */
+  def consumeProcessAndCommitOrCommit[F[_]]
+    : ConsumeProcessAndCommitOrCommitPartiallyApplied[F] =
+    new ConsumeProcessAndCommitOrCommitPartiallyApplied[F]
 
   /**
     * Consume records from the given subscription, and apply the provided function on each record,
@@ -61,13 +81,16 @@ object Consuming {
   private val log = LoggerFactory.getLogger(classOf[Consuming])
 
   private[kafka] final class ConsumePartiallyApplied[F[_]](
-      val dummy: Boolean = true)
-      extends AnyVal {
-    def apply[K, V](subscription: Subscription,
-                    keyDeserializer: Deserializer[K],
-                    valueDeserializer: Deserializer[V],
-                    settings: ConsumerSettings)(
-        implicit F: Effect[F]): Stream[F, ConsumerRecord[K, V]] = {
+      val dummy: Boolean = true
+  ) extends AnyVal {
+    def apply[K, V](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings
+    )(
+        implicit F: Effect[F]
+    ): Stream[F, ConsumerRecord[K, V]] = {
 
       consumerStream[F](keyDeserializer, valueDeserializer, settings)
         .flatMap { consumer =>
@@ -79,39 +102,83 @@ object Consuming {
     }
   }
 
-  private[kafka] final class ConsumeProcessAndCommitPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
-      extends AnyVal {
-    def apply[K, V, O](subscription: Subscription,
-                       keyDeserializer: Deserializer[K],
-                       valueDeserializer: Deserializer[V],
-                       settings: ConsumerSettings)(
-        processRecord: ConsumerRecord[K, V] => F[O])(
+  private[kafka] final class ConsumeProcessAndCommitOrCommitPartiallyApplied[
+      F[_]
+  ](
+      val dummy: Boolean = true
+  ) extends AnyVal {
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings
+    )(
+        processRecord: ConsumerRecord[K, V] => F[ResultOrOffsetsToCommit[O]]
+    )(
         implicit F: Effect[F],
-        ec: ExecutionContext): Stream[F, O] = {
+        ec: ExecutionContext
+    ): Stream[F, O] = {
 
       consumerStream[F](keyDeserializer, valueDeserializer, settings)
         .flatMap { consumer =>
           batchStream(consumer, subscription, settings)
             .flatMap { batch =>
-              processBatchAndCommit(consumer)(batch,
-                                              processRecord,
-                                              settings.maxParallelism)
+              processBatchAndCommitOrCommit(consumer)(
+                batch,
+                processRecord,
+                settings.maxParallelism
+              )
+            }
+        }
+    }
+  }
+
+  private[kafka] final class ConsumeProcessAndCommitPartiallyApplied[F[_]](
+      val dummy: Boolean = true
+  ) extends AnyVal {
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings
+    )(
+        processRecord: ConsumerRecord[K, V] => F[O]
+    )(
+        implicit F: Effect[F],
+        ec: ExecutionContext
+    ): Stream[F, O] = {
+
+      consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        .flatMap { consumer =>
+          batchStream(consumer, subscription, settings)
+            .flatMap { batch =>
+              processBatchAndCommitOrCommit(consumer)(
+                batch,
+                processRecord(_)
+                  .map[ResultOrOffsetsToCommit[O]](
+                    ResultOrOffsetsToCommit.Result.apply
+                  ),
+                settings.maxParallelism
+              )
             }
         }
     }
   }
 
   private[kafka] final class ConsumeProcessBatchAndCommitPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
-      extends AnyVal {
-    def apply[K, V, O](subscription: Subscription,
-                       keyDeserializer: Deserializer[K],
-                       valueDeserializer: Deserializer[V],
-                       settings: ConsumerSettings)(
-        processRecordBatch: Chunk[ConsumerRecord[K, V]] => F[
-          Chunk[(O, Offset)]])(implicit F: Effect[F],
-                               ec: ExecutionContext): Stream[F, O] = {
+      val dummy: Boolean = true
+  ) extends AnyVal {
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings
+    )(
+        processRecordBatch: Chunk[ConsumerRecord[K, V]] => F[Chunk[(O, Offset)]]
+    )(
+        implicit F: Effect[F],
+        ec: ExecutionContext
+    ): Stream[F, O] = {
 
       consumerStream[F](keyDeserializer, valueDeserializer, settings)
         .flatMap { consumer =>
@@ -126,13 +193,16 @@ object Consuming {
   }
 
   private[kafka] final class ConsumerStreamPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
-      extends AnyVal {
+      val dummy: Boolean = true
+  ) extends AnyVal {
 
-    def apply[K, V](keyDeserializer: Deserializer[K],
-                    valueDeserializer: Deserializer[V],
-                    settings: ConsumerSettings)(
-        implicit F: Sync[F]): Stream[F, Consumer[K, V]] = {
+    def apply[K, V](
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings
+    )(
+        implicit F: Sync[F]
+    ): Stream[F, Consumer[K, V]] = {
 
       Stream.bracket(
         initConsumer[F, K, V](settings.nativeSettings,
@@ -146,7 +216,8 @@ object Consuming {
   private def batchStream[F[_]: Sync, K, V](
       consumer: Consumer[K, V],
       subscription: Subscription,
-      settings: ConsumerSettings): Stream[F, ConsumerRecords[K, V]] = {
+      settings: ConsumerSettings
+  ): Stream[F, ConsumerRecords[K, V]] = {
 
     for {
       _ <- Stream.eval(subscribeConsumer(consumer, subscription))
@@ -159,7 +230,8 @@ object Consuming {
 
   private def subscribeConsumer[F[_]: Sync, K, V](
       consumer: Consumer[K, V],
-      subscription: Subscription): F[Unit] = Sync[F].delay {
+      subscription: Subscription
+  ): F[Unit] = Sync[F].delay {
     subscription match {
       case TopicSubscription(topics) => consumer.subscribe(topics.asJava)
     }
@@ -170,10 +242,13 @@ object Consuming {
   private def initConsumer[F[_]: Sync, K, V](
       nativeSettings: Map[String, AnyRef],
       keyDeserializer: Deserializer[K],
-      valueDeserializer: Deserializer[V]): F[Consumer[K, V]] = Sync[F].delay {
-    val consumer = new KafkaConsumer[K, V](nativeSettings.asJava,
-                                           keyDeserializer,
-                                           valueDeserializer)
+      valueDeserializer: Deserializer[V]
+  ): F[Consumer[K, V]] = Sync[F].delay {
+    val consumer = new KafkaConsumer[K, V](
+      nativeSettings.asJava,
+      keyDeserializer,
+      valueDeserializer
+    )
 
     log.debug(s"Consumer initiated with kafkaConsumerSettings: $nativeSettings")
 
@@ -188,7 +263,10 @@ object Consuming {
       consumer: Consumer[K, V])(
       batch: ConsumerRecords[K, V],
       f: Chunk[ConsumerRecord[K, V]] => F[Chunk[(O, Offset)]],
-      parallelism: Int)(implicit ec: ExecutionContext): Stream[F, O] = {
+      parallelism: Int
+  )(
+      implicit ec: ExecutionContext
+  ): Stream[F, O] = {
 
     log.debug(s"Processing batchChunk $batch")
 
@@ -220,11 +298,14 @@ object Consuming {
       .flatMap(Stream.emits(_))
   }
 
-  private def processBatchAndCommit[F[_]: Effect, K, V, O](
+  private def processBatchAndCommitOrCommit[F[_]: Effect, K, V, O](
       consumer: Consumer[K, V])(
       batch: ConsumerRecords[K, V],
-      f: ConsumerRecord[K, V] => F[O],
-      parallelism: Int)(implicit ec: ExecutionContext): Stream[F, O] = {
+      f: ConsumerRecord[K, V] => F[ResultOrOffsetsToCommit[O]],
+      parallelism: Int
+  )(
+      implicit ec: ExecutionContext
+  ): Stream[F, O] = {
 
     log.debug(s"Processing batch $batch")
 
@@ -235,9 +316,19 @@ object Consuming {
       Stream
         .emits(records)
         .evalMap { record =>
-          f(record).map(result =>
-            RecordResult(result, new OffsetAndMetadata(record.offset() + 1)))
+          f(record).map {
+            case ResultOrOffsetsToCommit.Result(result) =>
+              Stream.emit(
+                RecordResult(
+                  result,
+                  new OffsetAndMetadata(record.offset() + 1)
+                ))
+            case ResultOrOffsetsToCommit.OffsetToCommit(offsets) =>
+              commit(consumer, offsets)
+              Stream.empty
+          }: F[Stream[F, RecordResult[O]]]
         }
+        .flatMap(identity)
         .fold(PartitionResults.empty[O](tp, offsetAndMetadata))(_ :+ _)
     }
 
@@ -254,8 +345,8 @@ object Consuming {
 
   private def commit[F[_]: Async](
       consumer: Consumer[_, _],
-      commits: Map[TopicPartition, OffsetAndMetadata])
-    : F[Map[TopicPartition, OffsetAndMetadata]] = {
+      commits: Offsets
+  ): F[Offsets] = {
 
     // We need to use synchronous commit, as the async one is buffering the calls and it will not call the callback
     // before another commitAsync or commitSync is invoked.
