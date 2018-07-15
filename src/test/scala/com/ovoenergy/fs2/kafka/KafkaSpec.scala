@@ -4,7 +4,7 @@ import java.util
 
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
-import fs2.Chunk
+import fs2.{Chunk, Stream}
 import org.apache.kafka.clients.consumer.{
   ConsumerConfig,
   ConsumerRecord,
@@ -17,12 +17,15 @@ import org.apache.kafka.clients.producer.{
 }
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization._
+import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.collection.JavaConverters._
 
 class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
+
+  private val log = LoggerFactory.getLogger(classOf[KafkaSpec])
 
   implicit val stringSerializer: Serializer[String] = new StringSerializer
   implicit val stringDeserializer: Deserializer[String] = new StringDeserializer
@@ -240,6 +243,59 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
     }
   }
 
+  "consumeProcessBatchWithPipeAndCommit" should {
+    "commit the last offset for the batch when user stream returns with BatchProcessed" in withRunningKafkaOnFoundPort(
+      EmbeddedKafkaConfig(customConsumerProperties =
+        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      config =>
+        val topic = "test-3"
+        val groupId = "test-3"
+
+        val settings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.MAX_POLL_RECORDS_CONFIG -> "100",
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
+        )
+
+        createCustomTopic(topic, partitions = 3)
+
+        val produced = (0 until 100).map(i => s"key-$i" -> s"value->$i")
+        publishToKafka(topic, produced)
+
+        val consumeStream =
+          consumeProcessBatchWithPipeAndCommit[IO](
+            TopicSubscription(Set(topic)),
+            new StringDeserializer,
+            new StringDeserializer,
+            settings
+          )(
+            _.evalMap(c => IO(c.offset()))
+              .filter(_ % 10 == 0)
+              .evalMap(o => IO(log.info(s"Filtered offset:$o")))
+              .drain
+              .asInstanceOf[Stream[IO, BatchProcessed.type]] ++ Stream
+              .eval(IO(BatchProcessed))).head
+
+        val topicPartitions = consumeStream.compile.toList.unsafeRunSync().head
+
+        topicPartitions.values.map(_.offset()).sum shouldBe 100
+        withKafkaConsumer[String, String, Unit](settings) { consumer =>
+          topicPartitions.foreach {
+            case (topicPartition, offsetAndMetadata) =>
+              consumer
+                .committed(topicPartition)
+                .offset() shouldBe offsetAndMetadata.offset()
+          }
+        }
+    }
+  }
+
   "produceRecord" should {
     "be composed with consumeProcessAndCommit" in withRunningKafkaOnFoundPort(
       EmbeddedKafkaConfig()) { config =>
@@ -256,7 +312,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
           Map(
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
@@ -325,7 +380,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
           Map(
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
