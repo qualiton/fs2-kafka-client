@@ -49,16 +49,15 @@ trait Consuming {
     new ConsumeProcessBatchAndCommitPartiallyApplied[F]
 
   /**
-    * Consume records from the given subscription, and apply the provided `Pipe[F[_], ConsumerRecord[K, V], BatchProcessed.type]` function on each batch
-    * of records which is converted to stream, and commit the offsets to Kafka after the stream returned with BatchProcessed.
-    * The complete error handling is delegated to the provided pipe. When the stream returns with BatchProcessed.type it is assumed that every emitted element was processed
+    * Consume records from the given subscription, and apply the provided `Pipe[F[_], ConsumerRecord[K, V], O]` function on each batch
+    * of records which is converted to stream, and commit the offsets to Kafka after the stream terminated. Note that the resulting stream
+    * can emit less or more elements compared to the input stream.
+    * The complete error handling is delegated to the provided pipe. When the stream terminates it is assumed that every emitted element was processed
     * and the latest offset in the batch will be used for commit.
     * The records in each topic/partition will be processed in sequence, while multiple topic/partitions will be processed in parallel,
     * up to the specified parallelism.
     *
-    * The result of the processing is a `Stream[F, Map[TopicPartition, OffsetAndMetadata]`.
-    * It means it does not return with computation result just with the kafka topic and offset metadata for the batch.
-    * Computation result is side effect of streaming and should be processed in the stream itself
+    * The result of the processing is a `Stream[F, BatchResults[O]]`.
     */
   def consumeProcessBatchWithPipeAndCommit[F[_]]
     : ConsumeProcessBatchWithPipeAndCommitPartiallyApplied[F] =
@@ -144,14 +143,13 @@ object Consuming {
   private[kafka] final class ConsumeProcessBatchWithPipeAndCommitPartiallyApplied[
       F[_]](val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V](subscription: Subscription,
-                    keyDeserializer: Deserializer[K],
-                    valueDeserializer: Deserializer[V],
-                    settings: ConsumerSettings)(
-        processRecordBatch: Pipe[F, ConsumerRecord[K, V], BatchProcessed.type])(
+    def apply[K, V, O](subscription: Subscription,
+                       keyDeserializer: Deserializer[K],
+                       valueDeserializer: Deserializer[V],
+                       settings: ConsumerSettings)(
+        processRecordBatch: Pipe[F, ConsumerRecord[K, V], O])(
         implicit F: Effect[F],
-        ec: ExecutionContext)
-      : Stream[F, Map[TopicPartition, OffsetAndMetadata]] = {
+        ec: ExecutionContext): Stream[F, BatchResults[O]] = {
 
       consumerStream[F](keyDeserializer, valueDeserializer, settings)
         .flatMap { consumer =>
@@ -260,27 +258,24 @@ object Consuming {
       .flatMap(Stream.emits(_))
   }
 
-  private def processBatchWithPipeAndCommit[F[_]: Effect, K, V](
-      consumer: Consumer[K, V])(
-      batch: ConsumerRecords[K, V],
-      pipe: Pipe[F, ConsumerRecord[K, V], BatchProcessed.type],
-      parallelism: Int)(implicit ec: ExecutionContext)
-    : Stream[F, Map[TopicPartition, OffsetAndMetadata]] = {
+  private def processBatchWithPipeAndCommit[F[_]: Effect, K, V, O](
+      consumer: Consumer[K, V])(batch: ConsumerRecords[K, V],
+                                pipe: Pipe[F, ConsumerRecord[K, V], O],
+                                parallelism: Int)(
+      implicit ec: ExecutionContext): Stream[F, BatchResults[O]] = {
 
     log.debug(s"Processing batch with pipe $batch")
 
     val partitionStreams = batch.partitions.asScala.toSeq.map { tp =>
       val records = batch.records(tp).asScala
+      val offsetAndMetadata = new OffsetAndMetadata(records.last.offset() + 1L)
 
       Stream
         .emits(records)
         .covary[F]
         .through(pipe)
-        .map(
-          r =>
-            PartitionResults(tp,
-                             new OffsetAndMetadata(records.last.offset() + 1L),
-                             Vector(r)))
+        .map(result => RecordResult(result, offsetAndMetadata))
+        .fold(PartitionResults.empty[O](tp, offsetAndMetadata))(_ :+ _)
         .observe1(pr =>
           Effect[F].delay(log.debug(
             s"Commit offset:${pr.topicPartition.toString}:${pr.offset} - batch size:${records.size}")))
@@ -289,9 +284,10 @@ object Consuming {
     Stream
       .emits(partitionStreams)
       .join(parallelism)
-      .fold(BatchResults.empty[BatchProcessed.type])(_ :+ _)
+      .fold(BatchResults.empty[O])(_ :+ _)
       .evalMap { batchResults =>
         commit[F](consumer, batchResults.toCommit)
+          .map(_ => batchResults)
       }
   }
 
