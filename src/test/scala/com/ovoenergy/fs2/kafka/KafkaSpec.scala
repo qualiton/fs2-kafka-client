@@ -240,6 +240,56 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
     }
   }
 
+  "consumeProcessBatchWithPipeAndCommit" should {
+    "commit the last offset for the batch when user stream returns with BatchProcessed" in withRunningKafkaOnFoundPort(
+      EmbeddedKafkaConfig(customConsumerProperties =
+        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      config =>
+        val topic = "test-3"
+        val groupId = "test-3"
+
+        val settings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.MAX_POLL_RECORDS_CONFIG -> "100",
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
+        )
+
+        createCustomTopic(topic, partitions = 3)
+
+        val produced = (0 until 100).map(i => s"key-$i" -> s"value->$i")
+        publishToKafka(topic, produced)
+
+        val consumeStream =
+          consumeProcessBatchWithPipeAndCommit[IO](
+            TopicSubscription(Set(topic)),
+            new StringDeserializer,
+            new StringDeserializer,
+            settings
+          )(_.filter(cr => cr.offset() % 10 == 0)
+            .evalMap(cr => IO(cr.value()))).head
+
+        val topicPartitions =
+          consumeStream.compile.toList.unsafeRunSync().head.toCommit
+
+        topicPartitions.values.map(_.offset()).sum shouldBe 100
+
+        withKafkaConsumer[String, String, Unit](settings) { consumer =>
+          topicPartitions.foreach {
+            case (topicPartition, offsetAndMetadata) =>
+              consumer
+                .committed(topicPartition)
+                .offset() shouldBe offsetAndMetadata.offset()
+          }
+        }
+    }
+  }
+
   "produceRecord" should {
     "be composed with consumeProcessAndCommit" in withRunningKafkaOnFoundPort(
       EmbeddedKafkaConfig()) { config =>
@@ -256,7 +306,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
           Map(
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
@@ -325,7 +374,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
           Map(
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
