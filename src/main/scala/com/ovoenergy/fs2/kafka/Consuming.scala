@@ -56,7 +56,9 @@ trait Consuming {
     * The records in each topic/partition will be processed in sequence, while multiple topic/partitions will be processed in parallel,
     * up to the specified parallelism.
     *
-    * The result of the processing is a `Stream[F, Map[TopicPartition, OffsetAndMetadata]`
+    * The result of the processing is a `Stream[F, Map[TopicPartition, OffsetAndMetadata]`.
+    * It means it does not return with computation result just with the kafka topic and offset metadata for the batch.
+    * Computation result is side effect of streaming and should be processed in the stream itself
     */
   def consumeProcessBatchWithPipeAndCommit[F[_]]
     : ConsumeProcessBatchWithPipeAndCommitPartiallyApplied[F] =
