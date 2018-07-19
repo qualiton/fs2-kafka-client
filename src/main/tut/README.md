@@ -101,13 +101,10 @@ val settings = ConsumerSettings(
     )
 )
 
-val pipe: Pipe[IO, ConsumerRecord[K, V], BatchProcessed.type] = {
+val pipe: Pipe[IO, ConsumerRecord[K, V], Long] = {
       _.evalMap(c => IO(c.offset()))
           .filter(_ % 10 == 0)
-          .evalMap(o => IO(println(o)))
-          .drain
-          .asInstanceOf[Stream[IO, BatchProcessed.type]] ++ Stream
-          .eval(IO(BatchProcessed)))
+          .evalMap(o => IO(o * 3)))
 }
 
 consumeProcessBatchWithPipeAndCommit[IO](

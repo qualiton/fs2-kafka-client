@@ -4,7 +4,7 @@ import java.util
 
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
-import fs2.{Chunk, Stream}
+import fs2.Chunk
 import org.apache.kafka.clients.consumer.{
   ConsumerConfig,
   ConsumerRecord,
@@ -17,15 +17,12 @@ import org.apache.kafka.clients.producer.{
 }
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization._
-import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.collection.JavaConverters._
 
 class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
-
-  private val log = LoggerFactory.getLogger(classOf[KafkaSpec])
 
   implicit val stringSerializer: Serializer[String] = new StringSerializer
   implicit val stringDeserializer: Deserializer[String] = new StringDeserializer
@@ -274,17 +271,14 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             new StringDeserializer,
             new StringDeserializer,
             settings
-          )(
-            _.evalMap(c => IO(c.offset()))
-              .filter(_ % 10 == 0)
-              .evalMap(o => IO(log.info(s"Filtered offset:$o")))
-              .drain
-              .asInstanceOf[Stream[IO, BatchProcessed.type]] ++ Stream
-              .eval(IO(BatchProcessed))).head
+          )(_.filter(cr => cr.offset() % 10 == 0)
+            .evalMap(cr => IO(cr.value()))).head
 
-        val topicPartitions = consumeStream.compile.toList.unsafeRunSync().head
+        val topicPartitions =
+          consumeStream.compile.toList.unsafeRunSync().head.toCommit
 
         topicPartitions.values.map(_.offset()).sum shouldBe 100
+
         withKafkaConsumer[String, String, Unit](settings) { consumer =>
           topicPartitions.foreach {
             case (topicPartition, offsetAndMetadata) =>
