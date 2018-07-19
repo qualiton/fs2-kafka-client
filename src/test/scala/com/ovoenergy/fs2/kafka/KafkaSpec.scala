@@ -375,7 +375,6 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
             ConsumerConfig.GROUP_ID_CONFIG -> groupId,
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
           )
         )
