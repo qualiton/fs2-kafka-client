@@ -4,6 +4,7 @@ import cats.effect.{Async, Effect, IO, Sync}
 import cats.syntax.traverse._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
+import cats.syntax.monadError._
 import com.ovoenergy.fs2.kafka.Producing._
 import fs2._
 import org.apache.kafka.clients.producer._
@@ -128,36 +129,19 @@ object Producing {
 
       fs2.async.promise[F, Either[Throwable, RecordMetadata]].flatMap {
         promise =>
-          Effect[F]
-            .delay(producer.send(
+          F.delay(producer.send(
               record,
               new Callback {
                 override def onCompletion(metadata: RecordMetadata,
                                           exception: Exception): Unit = {
-                  Option(exception) match {
-                    case Some(e) =>
-                      Effect[F]
-                        .runAsync(promise.complete(Left(e))) {
-                          case Left(e)  => IO.raiseError(e)
-                          case Right(_) => IO(())
-                        }
-                        .unsafeRunSync()
-                    case None =>
-                      Effect[F]
-                        .runAsync(promise.complete(Right(metadata))) {
-                          case Left(e)  => IO.raiseError(e)
-                          case Right(_) => IO(())
-                        }
-                        .unsafeRunSync()
-                  }
+
+                  F.runAsync(promise.complete(
+                      Option(exception).toLeft(metadata)))(_ => IO.unit)
+                    .unsafeRunSync()
                 }
               }
             ))
-            .map(_ =>
-              promise.get.flatMap {
-                case Left(e)   => Effect[F].raiseError(e)
-                case Right(rm) => Effect[F].pure(rm)
-            })
+            .as(promise.get.rethrow)
       }
     }
   }

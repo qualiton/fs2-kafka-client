@@ -253,7 +253,7 @@ object Consuming {
       .fold(BatchResults.empty[O])(_ :+ _)
       .evalMap { batchResults =>
         commit[F](consumer, batchResults.toCommit)
-          .map(_ => batchResults.results)
+          .as(batchResults.results)
       }
       .flatMap(Stream.emits(_))
   }
@@ -287,7 +287,7 @@ object Consuming {
       .fold(BatchResults.empty[O])(_ :+ _)
       .evalMap { batchResults =>
         commit[F](consumer, batchResults.toCommit)
-          .map(_ => batchResults)
+          .as(batchResults)
       }
   }
 
@@ -318,7 +318,7 @@ object Consuming {
       .fold(BatchResults.empty[O])(_ :+ _)
       .evalMap { batchResults =>
         commit[F](consumer, batchResults.toCommit)
-          .map(_ => batchResults.results)
+          .as(batchResults.results)
       }
       .flatMap(Stream.emits(_))
   }
