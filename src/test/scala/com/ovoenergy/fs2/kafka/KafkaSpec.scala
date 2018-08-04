@@ -11,6 +11,7 @@ import org.apache.kafka.clients.consumer.{
   KafkaConsumer
 }
 import org.apache.kafka.clients.producer.{
+  MockProducer,
   ProducerConfig,
   ProducerRecord,
   RecordMetadata
@@ -474,6 +475,38 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
         messages should not be empty
       }
+    }
+  }
+
+  "subscrubedProduce" should {
+    "produce transformed messages upon events in fs2.Topic" in {
+
+      val topic = fs2.async.topic[IO, Int](0).unsafeRunSync()
+
+      val publisherStream = fs2.Stream.eval(topic.publish1(1))
+
+      val transformer: Pipe[IO, Int, ProducerRecord[String, String]] = i =>
+        i.map(i =>
+          new ProducerRecord[String, String]("", "foo", (i * 2).toString))
+
+      val producer = new MockProducer[String, String](true,
+                                                      new StringSerializer,
+                                                      new StringSerializer)
+
+      val subscriber = subscribedProduce[IO](producer, topic, transformer, 1)
+
+      subscriber
+        .take(1)
+        .concurrently(publisherStream)
+        .compile
+        .toList
+        .unsafeRunSync()
+
+      val produced = producer.history.asScala.toList
+      produced.size shouldBe 1
+      produced.head.key() shouldBe "foo"
+      produced.head.value() shouldBe "2"
+
     }
   }
 

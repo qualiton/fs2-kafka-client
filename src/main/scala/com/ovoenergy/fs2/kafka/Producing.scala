@@ -7,6 +7,7 @@ import cats.syntax.functor._
 import cats.syntax.monadError._
 import com.ovoenergy.fs2.kafka.Producing._
 import fs2._
+import fs2.async.mutable.Topic
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization.Serializer
 
@@ -55,6 +56,12 @@ trait Producing {
     */
   def produceRecordBatch[F[_]]: ProduceRecordBatchPartiallyApplied[F] =
     new ProduceRecordBatchPartiallyApplied[F]()
+
+  /**
+    * Sends items, communicated through `fs2.Topic` as ProducerRecord[K,V] to Kafka.
+    */
+  def subscribedProduce[F[_]]: SubscribedProducePartiallyApplied[F] =
+    new SubscribedProducePartiallyApplied[F]
 
 }
 
@@ -176,6 +183,19 @@ object Producing {
         }
       })
     }
+  }
+
+  private[kafka] final class SubscribedProducePartiallyApplied[F[_]] {
+    def apply[K, V, B](
+        p: Producer[K, V],
+        topic: Topic[F, B],
+        transformer: Pipe[F, B, ProducerRecord[K, V]],
+        maxQueueSize: Int = 500
+    )(implicit F: Async[F]): Stream[F, RecordMetadata] =
+      topic
+        .subscribe(maxQueueSize)
+        .through(transformer)
+        .evalMap(pr => produceRecord(p, pr))
   }
 
   private def initProducer[F[_]: Sync, K, V](
