@@ -357,6 +357,31 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
       }
 
     }
+
+    "throw exception when failing to communicate with kafka" in {
+      import cats.syntax.all._
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      val producer = new MockProducer[String, String](false,
+                                                      new StringSerializer,
+                                                      new StringSerializer)
+      val error = new RuntimeException("error")
+      val errorEmiter =
+        fs2.Stream.eval(IO(Thread.sleep(300)) *> IO(producer.errorNext(error)))
+      val record = new ProducerRecord[String, String]("topic", "foo", "bar")
+
+      val kafkaStream = fs2.Stream.eval(produceRecord[IO](producer, record))
+
+      val exception = the[KafkaProduceError[String, String]] thrownBy kafkaStream
+        .concurrently(errorEmiter)
+        .compile
+        .toList
+        .unsafeRunSync()
+      exception.record shouldBe record
+      exception.error shouldBe error
+
+    }
+
   }
 
   "produceRecordBatch" should {
