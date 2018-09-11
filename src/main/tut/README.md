@@ -2,7 +2,8 @@
 This is a tiny fs2 wrapper around the Kafka java client.
 
 [![CircleCI](https://circleci.com/gh/ovotech/fs2-kafka-client.svg?style=svg)](https://circleci.com/gh/ovotech/fs2-kafka-client)
-[![Download](https://api.bintray.com/packages/ovotech/maven/fs2-kafka-client/images/download.svg) ](https://bintray.com/ovotech/maven/fs2-kafka-client/_latestVersion)  
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/7a33158494af4a17a682106fef376625)](https://www.codacy.com/app/filippo-deluca/fs2-kafka-client?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ovotech/fs2-kafka-client&amp;utm_campaign=Badge_Grade)
+[![Download](https://api.bintray.com/packages/ovotech/maven/fs2-kafka-client/images/download.svg) ](https://bintray.com/ovotech/maven/fs2-kafka-client/_latestVersion)
 
 ## Installation
 To get started with SBT, simply add the following lines to your build.sbt file.
@@ -13,15 +14,9 @@ resolvers += "Ovotech" at "https://dl.bintray.com/ovotech/maven"
 libraryDependencies += "com.ovoenergy" %% "fs2-kafka-client" % "<latest version>"
 ```
 
-```tut:book
-import scala.concurrent.duration._
-
-val d = 5.seconds
-```
-
 ## Consuming
 To consume records without committing or with auto-commit:
-```tut
+```tut:silent
 import com.ovoenergy.fs2.kafka._
 import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
