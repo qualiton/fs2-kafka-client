@@ -8,6 +8,8 @@ This is a tiny fs2 wrapper around the Kafka java client.
 To get started with SBT, simply add the following lines to your build.sbt file.
 
 ```sbtshell
+resolvers += "Ovotech" at "https://dl.bintray.com/ovotech/maven"
+
 libraryDependencies += "com.ovoenergy" %% "fs2-kafka-client" % "<latest version>"
 ```
 
@@ -42,7 +44,7 @@ val consumedRecords = consume[IO](
   new StringDeserializer,
   new StringDeserializer,
   settings
-).take(1000).compile.toVector.unsafeRunSync()
+).take(1000).compile.toVector
 
 ```
 
@@ -53,6 +55,9 @@ import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
 import org.apache.kafka.clients.consumer._
 import cats.effect.IO
+import scala.concurrent.ExecutionContext
+
+implicit val ec = ExecutionContext.global
 
 val settings = ConsumerSettings(
     pollTimeout = 250.milliseconds,
@@ -75,7 +80,7 @@ val ints = consumeProcessAndCommit[IO](
     new StringDeserializer,
     new StringDeserializer,
     settings
-)(processRecord).take(1000).compile.toVector.unsafeRunSync()
+)(processRecord).take(1000).compile.toVector
 ```
 
 The record processing order is guaranteed within the same partition, while records from different partitions are processed
@@ -89,6 +94,9 @@ import org.apache.kafka.common.serialization._
 import org.apache.kafka.clients.consumer._
 import cats.effect.IO
 import fs2.Pipe
+import scala.concurrent.ExecutionContext
+
+implicit val ec = ExecutionContext.global
 
 val settings = ConsumerSettings(
     pollTimeout = 250.milliseconds,
@@ -101,10 +109,10 @@ val settings = ConsumerSettings(
     )
 )
 
-val pipe: Pipe[IO, ConsumerRecord[K, V], Long] = {
-      _.evalMap(c => IO(c.offset()))
-          .filter(_ % 10 == 0)
-          .evalMap(o => IO(o * 3)))
+def pipe[K, V]: Pipe[IO, ConsumerRecord[K, V], Long] = {
+  _.evalMap(c => IO(c.offset()))
+    .filter(_ % 10 == 0)
+    .evalMap(o => IO(o * 3))
 }
 
 consumeProcessBatchWithPipeAndCommit[IO](
@@ -112,7 +120,7 @@ consumeProcessBatchWithPipeAndCommit[IO](
     new StringDeserializer,
     new StringDeserializer,
     settings
-)(pipe).take(1).compile.drain.unsafeRunSync()
+)(pipe).take(1).compile.drain
 ```
 
 ## Producing
@@ -124,13 +132,22 @@ import scala.concurrent.duration._
 import org.apache.kafka.common.serialization._
 import org.apache.kafka.clients.producer._
 import cats.effect.IO
+import scala.concurrent.ExecutionContext
+import java.util.Properties
 
+implicit val ec = ExecutionContext.global
 
 val topic = "my-topic"
 val key = "my-key"
 val value = "my-value"
 
-val producer: Producer[String, String] = ???
+val props = new Properties()
+props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
+props.put(ProducerConfig.CLIENT_ID_CONFIG, "KafkaExampleProducer")
+props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
+props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
+
+val producer: Producer[String, String] = new KafkaProducer[String, String](props)
 
 produceRecord[IO](producer, new ProducerRecord[String, String](topic, key, value))
 ```
@@ -153,17 +170,20 @@ val producerSettings = ProducerSettings(
 
 val topic = "my-topic"
 
-producerStream[IO](producerSettings,
-                   new StringSerializer,
-                   new StringSerializer).flatMap {producer =>
-            
-    val key = "my-key"
-    val value = "my-value"
+producerStream[IO](
+  producerSettings,
+  new StringSerializer,
+  new StringSerializer
+).flatMap { producer =>
 
-    Stream.eval{
-      produceRecord[IO](producer)(
-        new ProducerRecord[String, String](topic,key, value))
-    }
+  val key = "my-key"
+  val value = "my-value"
+
+  Stream.eval {
+    produceRecord[IO](producer, new ProducerRecord[String, String](topic, key, value))
+  }
 }
 ```
+
+
 
