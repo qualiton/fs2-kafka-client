@@ -3,6 +3,9 @@ import Dependencies._
 lazy val `fs2-kafka-client` = (project in file("."))
   .enablePlugins(TutPlugin)
   .settings(
+    organizationName := "OVO Energy",
+    startYear := Some(2018),
+    licenses += ("Apache-2.0", new URL("https://www.apache.org/licenses/LICENSE-2.0.txt")),
     scalacOptions ++= Seq(
       "-target:jvm-1.8",
       "-deprecation", // Emit warning and location for usages of deprecated APIs.
@@ -56,10 +59,7 @@ lazy val `fs2-kafka-client` = (project in file("."))
     inThisBuild(
       List(
         homepage := Some(url("https://github.com/ovotech/fs2-kafka-client")),
-        licenses := Seq(
-          "Apache-2.0" -> url("https://opensource.org/licenses/apache-2.0")),
         organization := "com.ovoenergy",
-        organizationName := "OVO Energy",
         organizationHomepage := Some(url("https://github.com/ovotech")),
         developers := List(
           Developer("filippo.deluca",
