@@ -491,7 +491,7 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
           .toVector
           .unsafeRunSync()
 
-        println(System.currentTimeMillis() - start)
+        note(s"Time to produce in patch: ${System.currentTimeMillis() - start}")
 
         val messages =
           consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
