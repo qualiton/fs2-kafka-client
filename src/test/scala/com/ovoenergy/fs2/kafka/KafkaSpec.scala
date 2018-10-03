@@ -5,11 +5,7 @@ import java.util
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import cats.effect.IO
 import fs2._
-import org.apache.kafka.clients.consumer.{
-  ConsumerConfig,
-  ConsumerRecord,
-  KafkaConsumer
-}
+import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{
   MockProducer,
   ProducerConfig,
@@ -55,47 +51,48 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
   }
 
   "consume" should {
-    "return a Stream of kafka messages" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig()) { config =>
-      val topic = "test-1"
-      val groupId = "test-1"
+    "return a Stream of kafka messages" in withRunningKafkaOnFoundPort(EmbeddedKafkaConfig()) {
+      config =>
+        val topic = "test-1"
+        val groupId = "test-1"
 
-      val settings = ConsumerSettings(
-        250.milliseconds,
-        4,
-        Map(
-          ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
-          ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-          ConsumerConfig.GROUP_ID_CONFIG -> groupId,
-          ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+        val settings = ConsumerSettings(
+          250.milliseconds,
+          4,
+          Map(
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          )
         )
-      )
 
-      createCustomTopic(topic, partitions = 3)
+        createCustomTopic(topic, partitions = 3)
 
-      val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
+        val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
 
-      publishToKafka(topic, produced)
+        publishToKafka(topic, produced)
 
-      val consumed = consume[IO](TopicSubscription(Set(topic)),
-                                 new StringDeserializer,
-                                 new StringDeserializer,
-                                 settings)
-        .take(1000)
-        .map(r => r.key() -> r.value())
-        .compile
-        .toVector
-        .unsafeRunSync()
+        val consumed = consume[IO](
+          TopicSubscription(Set(topic)),
+          new StringDeserializer,
+          new StringDeserializer,
+          settings)
+          .take(1000)
+          .map(r => r.key() -> r.value())
+          .compile
+          .toVector
+          .unsafeRunSync()
 
-      consumed should contain theSameElementsAs produced
+        consumed should contain theSameElementsAs produced
 
     }
   }
 
   "consumeProcessAndCommit" should {
     "commit all the messages" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig(customConsumerProperties =
-        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      EmbeddedKafkaConfig(
+        customConsumerProperties = Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
       config =>
         val topic = "test-1"
         val groupId = "test-1"
@@ -145,8 +142,8 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
   "consumeProcessAndCommit" should {
     "fail if the process function fail" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig(customConsumerProperties =
-        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      EmbeddedKafkaConfig(
+        customConsumerProperties = Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
       config =>
         val topic = "test-1"
         val groupId = "test-1"
@@ -190,8 +187,8 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
   "consumeProcessBatchAndCommit" should {
     "commit offsets returned by processing function" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig(customConsumerProperties =
-        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      EmbeddedKafkaConfig(
+        customConsumerProperties = Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
       config =>
         val topic = "test-2"
         val groupId = "test-2"
@@ -243,8 +240,8 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
   "consumeProcessBatchWithPipeAndCommit" should {
     "commit the last offset for the batch when user stream returns with BatchProcessed" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig(customConsumerProperties =
-        Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
+      EmbeddedKafkaConfig(
+        customConsumerProperties = Map(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG -> "false"))) {
       config =>
         val topic = "test-3"
         val groupId = "test-3"
@@ -292,69 +289,67 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
   }
 
   "produceRecord" should {
-    "be composed with consumeProcessAndCommit" in withRunningKafkaOnFoundPort(
-      EmbeddedKafkaConfig()) { config =>
-      {
+    "be composed with consumeProcessAndCommit" in withRunningKafkaOnFoundPort(EmbeddedKafkaConfig()) {
+      config =>
+        {
 
-        val sourceTopic = "source"
-        val destinationTopic = "destination"
+          val sourceTopic = "source"
+          val destinationTopic = "destination"
 
-        val groupId = "test-1"
+          val groupId = "test-1"
 
-        val consumerSettings = ConsumerSettings(
-          250.milliseconds,
-          4,
-          Map(
-            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ConsumerConfig.GROUP_ID_CONFIG -> groupId,
-            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+          val consumerSettings = ConsumerSettings(
+            250.milliseconds,
+            4,
+            Map(
+              ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "false",
+              ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+              ConsumerConfig.GROUP_ID_CONFIG -> groupId,
+              ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest"
+            )
           )
-        )
 
-        val producerSettings = ProducerSettings(
-          Map(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
-            ProducerConfig.ACKS_CONFIG -> "all",
-            ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> "1"
+          val producerSettings = ProducerSettings(
+            Map(
+              ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:${config.kafkaPort}",
+              ProducerConfig.ACKS_CONFIG -> "all",
+              ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> "1"
+            )
           )
-        )
 
-        createCustomTopic(sourceTopic, partitions = 6)
-        createCustomTopic(destinationTopic, partitions = 12)
+          createCustomTopic(sourceTopic, partitions = 6)
+          createCustomTopic(destinationTopic, partitions = 12)
 
-        val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
-        publishToKafka(sourceTopic, produced)
+          val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
+          publishToKafka(sourceTopic, produced)
 
-        val stream = producerStream[IO](producerSettings,
-                                        stringSerializer,
-                                        stringSerializer).flatMap { producer =>
-          def process(
-              record: ConsumerRecord[String, String]): IO[RecordMetadata] = {
-            produceRecord[IO](
-              producer,
-              new ProducerRecord[String, String](destinationTopic,
-                                                 record.key(),
-                                                 record.value()))
-          }
+          val stream =
+            producerStream[IO](producerSettings, stringSerializer, stringSerializer).flatMap {
+              producer =>
+                def process(record: ConsumerRecord[String, String]): IO[RecordMetadata] = {
+                  produceRecord[IO](
+                    producer,
+                    new ProducerRecord[String, String](
+                      destinationTopic,
+                      record.key(),
+                      record.value()))
+                }
 
-          consumeProcessAndCommit[IO](
-            TopicSubscription(Set(sourceTopic)),
-            new StringDeserializer,
-            new StringDeserializer,
-            consumerSettings
-          )(process)
+                consumeProcessAndCommit[IO](
+                  TopicSubscription(Set(sourceTopic)),
+                  new StringDeserializer,
+                  new StringDeserializer,
+                  consumerSettings
+                )(process)
+            }
+
+          stream.take(1000).compile.toVector.unsafeRunSync()
+
+          val messages =
+            consumeNumberKeyedMessagesFrom[String, String](destinationTopic, 1000, false)
+
+          messages should contain theSameElementsAs produced
         }
-
-        stream.take(1000).compile.toVector.unsafeRunSync()
-
-        val messages =
-          consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
-                                                         1000,
-                                                         false)
-
-        messages should contain theSameElementsAs produced
-      }
 
     }
 
@@ -362,9 +357,8 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
       import cats.syntax.all._
       import scala.concurrent.ExecutionContext.Implicits.global
 
-      val producer = new MockProducer[String, String](false,
-                                                      new StringSerializer,
-                                                      new StringSerializer)
+      val producer =
+        new MockProducer[String, String](false, new StringSerializer, new StringSerializer)
       val error = new RuntimeException("error")
       val errorEmiter =
         fs2.Stream.eval(IO(Thread.sleep(300)) *> IO(producer.errorNext(error)))
@@ -419,34 +413,32 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
         val produced = (0 until 1000).map(i => s"key-$i" -> s"value->$i")
         publishToKafka(sourceTopic, produced)
 
-        val stream = producerStream[IO](producerSettings,
-                                        stringSerializer,
-                                        stringSerializer).flatMap { producer =>
-          def processBatch(recordBatch: Chunk[ConsumerRecord[String, String]])
-            : IO[Chunk[(RecordMetadata, Offset)]] = {
-            produceRecordBatch[IO](producer, recordBatch.map { record =>
-              new ProducerRecord[String, String](
-                destinationTopic,
-                record.key(),
-                record.value()
-              ) -> Offset(record.offset())
-            })
-          }
+        val stream =
+          producerStream[IO](producerSettings, stringSerializer, stringSerializer).flatMap {
+            producer =>
+              def processBatch(recordBatch: Chunk[ConsumerRecord[String, String]])
+                : IO[Chunk[(RecordMetadata, Offset)]] = {
+                produceRecordBatch[IO](producer, recordBatch.map { record =>
+                  new ProducerRecord[String, String](
+                    destinationTopic,
+                    record.key(),
+                    record.value()
+                  ) -> Offset(record.offset())
+                })
+              }
 
-          consumeProcessBatchAndCommit[IO](
-            TopicSubscription(Set(sourceTopic)),
-            new StringDeserializer,
-            new StringDeserializer,
-            consumerSettings
-          )(processBatch)
-        }
+              consumeProcessBatchAndCommit[IO](
+                TopicSubscription(Set(sourceTopic)),
+                new StringDeserializer,
+                new StringDeserializer,
+                consumerSettings
+              )(processBatch)
+          }
 
         stream.take(1000).compile.toVector.unsafeRunSync()
 
         val messages =
-          consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
-                                                         1000,
-                                                         false)
+          consumeNumberKeyedMessagesFrom[String, String](destinationTopic, 1000, false)
 
         messages should contain theSameElementsAs produced
       }
@@ -477,9 +469,7 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
               .flatMap(Stream.segment)
               .evalMap[IO, IO[RecordMetadata]] { i =>
                 val record =
-                  new ProducerRecord[String, String](destinationTopic,
-                                                     s"key-$i",
-                                                     s"value-$i")
+                  new ProducerRecord[String, String](destinationTopic, s"key-$i", s"value-$i")
                 produceRecordWithBatching[IO].apply(producer, record)
               }
               // The buffer allow to put 1000 elements in the batch before waiting for the callback
@@ -494,9 +484,7 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
         note(s"Time to produce in patch: ${System.currentTimeMillis() - start}")
 
         val messages =
-          consumeNumberKeyedMessagesFrom[String, String](destinationTopic,
-                                                         1000,
-                                                         false)
+          consumeNumberKeyedMessagesFrom[String, String](destinationTopic, 1000, false)
 
         messages should not be empty
       }
@@ -510,13 +498,11 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
 
       val publisherStream = fs2.Stream.eval(topic.publish1(1))
 
-      val transformer: Pipe[IO, Int, ProducerRecord[String, String]] = i =>
-        i.map(i =>
-          new ProducerRecord[String, String]("", "foo", (i * 2).toString))
+      val transformer: Pipe[IO, Int, ProducerRecord[String, String]] =
+        i => i.map(i => new ProducerRecord[String, String]("", "foo", (i * 2).toString))
 
-      val producer = new MockProducer[String, String](true,
-                                                      new StringSerializer,
-                                                      new StringSerializer)
+      val producer =
+        new MockProducer[String, String](true, new StringSerializer, new StringSerializer)
 
       val subscriber = subscribedProduce[IO](producer, topic, transformer, 1)
 
@@ -535,12 +521,11 @@ class KafkaSpec extends BaseUnitSpec with EmbeddedKafka {
     }
   }
 
-  def withKafkaConsumer[K, V, A](settings: ConsumerSettings)(
-      f: KafkaConsumer[K, V] => A)(implicit keyDeserializer: Deserializer[K],
-                                   valueDeserializer: Deserializer[V]): A = {
-    val consumer = new KafkaConsumer[K, V](settings.nativeSettings.asJava,
-                                           keyDeserializer,
-                                           valueDeserializer)
+  def withKafkaConsumer[K, V, A](settings: ConsumerSettings)(f: KafkaConsumer[K, V] => A)(
+      implicit keyDeserializer: Deserializer[K],
+      valueDeserializer: Deserializer[V]): A = {
+    val consumer =
+      new KafkaConsumer[K, V](settings.nativeSettings.asJava, keyDeserializer, valueDeserializer)
     try {
       f(consumer)
     } finally {

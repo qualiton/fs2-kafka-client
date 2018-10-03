@@ -61,8 +61,7 @@ trait Producing {
     * The reason for that is allow the Kafka producer to optimize the network communication by sending records in
     * batches instead of one record at time.
     */
-  def produceRecordWithBatching[F[_]]
-    : ProduceRecordWithBatchingPartiallyApplied[F] =
+  def produceRecordWithBatching[F[_]]: ProduceRecordWithBatchingPartiallyApplied[F] =
     new ProduceRecordWithBatchingPartiallyApplied[F]()
 
   /**
@@ -83,12 +82,12 @@ trait Producing {
 
 object Producing {
 
-  private[kafka] final class ProducePartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ProducePartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V](settings: ProducerSettings,
-                    keySerializer: Serializer[K],
-                    valueSerializer: Serializer[V])(
+    def apply[K, V](
+        settings: ProducerSettings,
+        keySerializer: Serializer[K],
+        valueSerializer: Serializer[V])(
         implicit F: Async[F]): Pipe[F, ProducerRecord[K, V], RecordMetadata] = {
 
       record: Stream[F, ProducerRecord[K, V]] =>
@@ -102,19 +101,15 @@ object Producing {
     }
   }
 
-  private[kafka] final class ProducerStreamPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ProducerStreamPartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V](settings: ProducerSettings,
-                    keySerializer: Serializer[K],
-                    valueSerializer: Serializer[V])(
-        implicit F: Sync[F]): Stream[F, Producer[K, V]] = {
+    def apply[K, V](
+        settings: ProducerSettings,
+        keySerializer: Serializer[K],
+        valueSerializer: Serializer[V])(implicit F: Sync[F]): Stream[F, Producer[K, V]] = {
 
       Stream
-        .bracket(
-          initProducer[F, K, V](settings.nativeSettings,
-                                keySerializer,
-                                valueSerializer))(
+        .bracket(initProducer[F, K, V](settings.nativeSettings, keySerializer, valueSerializer))(
           p => Stream.emit(p).covary[F],
           p => Sync[F].delay(p.close())
         )
@@ -122,8 +117,7 @@ object Producing {
     }
   }
 
-  private[kafka] final class ProduceRecordPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ProduceRecordPartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
     def apply[K, V](producer: Producer[K, V], record: ProducerRecord[K, V])(
         implicit F: Async[F]): F[RecordMetadata] = {
@@ -134,7 +128,7 @@ object Producing {
           (metadata: RecordMetadata, exception: Exception) =>
             Option(exception) match {
               case Some(e) => cb(Left(KafkaProduceException(record, e)))
-              case None    => cb(Right(metadata))
+              case None => cb(Right(metadata))
           }
         )
 
@@ -150,30 +144,25 @@ object Producing {
         implicit F: Effect[F],
         ec: ExecutionContext): F[F[RecordMetadata]] = {
 
-      fs2.async.promise[F, Either[Throwable, RecordMetadata]].flatMap {
-        promise =>
-          F.delay(producer.send(
-              record,
-              new Callback {
-                override def onCompletion(metadata: RecordMetadata,
-                                          exception: Exception): Unit = {
+      fs2.async.promise[F, Either[Throwable, RecordMetadata]].flatMap { promise =>
+        F.delay(producer.send(
+            record,
+            new Callback {
+              override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
 
-                  F.runAsync(promise.complete(
-                      Option(exception).toLeft(metadata)))(_ => IO.unit)
-                    .unsafeRunSync()
-                }
+                F.runAsync(promise.complete(Option(exception).toLeft(metadata)))(_ => IO.unit)
+                  .unsafeRunSync()
               }
-            ))
-            .as(promise.get.rethrow)
+            }
+          ))
+          .as(promise.get.rethrow)
       }
     }
   }
 
-  private[kafka] final class ProduceRecordBatchPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ProduceRecordBatchPartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V, P](producer: Producer[K, V],
-                       recordBatch: Chunk[(ProducerRecord[K, V], P)])(
+    def apply[K, V, P](producer: Producer[K, V], recordBatch: Chunk[(ProducerRecord[K, V], P)])(
         implicit F: Async[F],
         E: ExecutionContext): F[Chunk[(RecordMetadata, P)]] = {
       F.flatten(F.delay {
@@ -194,7 +183,7 @@ object Producing {
 
             F.async { cb =>
               promise.future.onComplete {
-                case Success(result)    => cb(Right(result))
+                case Success(result) => cb(Right(result))
                 case Failure(exception) => cb(Left(exception))
               }
             }
@@ -220,9 +209,7 @@ object Producing {
       nativeSettings: Map[String, AnyRef],
       keySerializer: Serializer[K],
       valueSerializer: Serializer[V]): F[Producer[K, V]] = Sync[F].delay {
-    new KafkaProducer[K, V](nativeSettings.asJava,
-                            keySerializer,
-                            valueSerializer)
+    new KafkaProducer[K, V](nativeSettings.asJava, keySerializer, valueSerializer)
   }
 
 }

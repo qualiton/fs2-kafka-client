@@ -99,5 +99,6 @@ lazy val `fs2-kafka-client` = (project in file("."))
       scalaTest % Test,
       embeddedKafka % Test
     ),
-    tutTargetDirectory := baseDirectory.value
+    tutTargetDirectory := baseDirectory.value,
+    scalafmtOnCompile := true
   )

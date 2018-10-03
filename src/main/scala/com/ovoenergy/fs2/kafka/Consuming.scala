@@ -49,8 +49,7 @@ trait Consuming {
     * The result of the processing is a `Stream[F, O]` where `O` is the
     * return type of the provided function.
     */
-  def consumeProcessAndCommit[F[_]]
-    : ConsumeProcessAndCommitPartiallyApplied[F] =
+  def consumeProcessAndCommit[F[_]]: ConsumeProcessAndCommitPartiallyApplied[F] =
     new ConsumeProcessAndCommitPartiallyApplied[F]
 
   /**
@@ -62,8 +61,7 @@ trait Consuming {
     * The result of the processing is a `Stream[F, O]` where `O` is the
     * return type of the provided function.
     */
-  def consumeProcessBatchAndCommit[F[_]]
-    : ConsumeProcessBatchAndCommitPartiallyApplied[F] =
+  def consumeProcessBatchAndCommit[F[_]]: ConsumeProcessBatchAndCommitPartiallyApplied[F] =
     new ConsumeProcessBatchAndCommitPartiallyApplied[F]
 
   /**
@@ -93,8 +91,7 @@ object Consuming {
 
   private val log = LoggerFactory.getLogger(classOf[Consuming])
 
-  private def defaultPollCommitEcStream[F[_]](
-      implicit F: Async[F]): Stream[F, ExecutionContext] = {
+  private def defaultPollCommitEcStream[F[_]](implicit F: Async[F]): Stream[F, ExecutionContext] = {
 
     def createPollCommitExecutor =
       Executors.newSingleThreadExecutor(new ThreadFactory {
@@ -120,13 +117,13 @@ object Consuming {
     (Async.shift(otherEc) *> f.attempt <* Async.shift(ec)).rethrow
   }
 
-  private[kafka] final class ConsumePartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ConsumePartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V](subscription: Subscription,
-                    keyDeserializer: Deserializer[K],
-                    valueDeserializer: Deserializer[V],
-                    settings: ConsumerSettings)(
+    def apply[K, V](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings)(
         implicit F: Effect[F],
         ec: ExecutionContext): Stream[F, ConsumerRecord[K, V]] = {
 
@@ -145,11 +142,11 @@ object Consuming {
   private[kafka] final class ConsumeProcessAndCommitPartiallyApplied[F[_]](
       val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V, O](subscription: Subscription,
-                       keyDeserializer: Deserializer[K],
-                       valueDeserializer: Deserializer[V],
-                       settings: ConsumerSettings)(
-        processRecord: ConsumerRecord[K, V] => F[O])(
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings)(processRecord: ConsumerRecord[K, V] => F[O])(
         implicit F: Effect[F],
         ec: ExecutionContext): Stream[F, O] = {
 
@@ -158,10 +155,11 @@ object Consuming {
           .flatMap { consumer =>
             batchStream(consumer, subscription, settings, pollCommitEc)
               .flatMap { batch =>
-                processBatchAndCommit(consumer)(batch,
-                                                processRecord,
-                                                settings.maxParallelism,
-                                                pollCommitEc)
+                processBatchAndCommit(consumer)(
+                  batch,
+                  processRecord,
+                  settings.maxParallelism,
+                  pollCommitEc)
               }
           }
       }
@@ -171,37 +169,39 @@ object Consuming {
   private[kafka] final class ConsumeProcessBatchAndCommitPartiallyApplied[F[_]](
       val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V, O](subscription: Subscription,
-                       keyDeserializer: Deserializer[K],
-                       valueDeserializer: Deserializer[V],
-                       settings: ConsumerSettings)(
-        processRecordBatch: Chunk[ConsumerRecord[K, V]] => F[
-          Chunk[(O, Offset)]])(implicit F: Effect[F],
-                               ec: ExecutionContext): Stream[F, O] = {
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings)(
+        processRecordBatch: Chunk[ConsumerRecord[K, V]] => F[Chunk[(O, Offset)]])(
+        implicit F: Effect[F],
+        ec: ExecutionContext): Stream[F, O] = {
 
       defaultPollCommitEcStream.flatMap { pollCommitEc =>
         consumerStream[F](keyDeserializer, valueDeserializer, settings)
           .flatMap { consumer =>
             batchStream(consumer, subscription, settings, pollCommitEc)
               .flatMap { batch =>
-                processBatchChunkAndCommit(consumer)(batch,
-                                                     processRecordBatch,
-                                                     settings.maxParallelism,
-                                                     pollCommitEc)
+                processBatchChunkAndCommit(consumer)(
+                  batch,
+                  processRecordBatch,
+                  settings.maxParallelism,
+                  pollCommitEc)
               }
           }
       }
     }
   }
 
-  private[kafka] final class ConsumeProcessBatchWithPipeAndCommitPartiallyApplied[
-      F[_]](val dummy: Boolean = true)
+  private[kafka] final class ConsumeProcessBatchWithPipeAndCommitPartiallyApplied[F[_]](
+      val dummy: Boolean = true)
       extends AnyVal {
-    def apply[K, V, O](subscription: Subscription,
-                       keyDeserializer: Deserializer[K],
-                       valueDeserializer: Deserializer[V],
-                       settings: ConsumerSettings)(
-        processRecordBatch: Pipe[F, ConsumerRecord[K, V], O])(
+    def apply[K, V, O](
+        subscription: Subscription,
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings)(processRecordBatch: Pipe[F, ConsumerRecord[K, V], O])(
         implicit F: Effect[F],
         ec: ExecutionContext): Stream[F, BatchResults[O]] = {
 
@@ -214,46 +214,45 @@ object Consuming {
               settings,
               pollCommitEc
             ).flatMap { batch =>
-              processBatchWithPipeAndCommit(consumer)(batch,
-                                                      processRecordBatch,
-                                                      settings.maxParallelism,
-                                                      pollCommitEc)
+              processBatchWithPipeAndCommit(consumer)(
+                batch,
+                processRecordBatch,
+                settings.maxParallelism,
+                pollCommitEc)
             }
           }
       }
     }
   }
 
-  private[kafka] final class ConsumerStreamPartiallyApplied[F[_]](
-      val dummy: Boolean = true)
+  private[kafka] final class ConsumerStreamPartiallyApplied[F[_]](val dummy: Boolean = true)
       extends AnyVal {
 
-    def apply[K, V](keyDeserializer: Deserializer[K],
-                    valueDeserializer: Deserializer[V],
-                    settings: ConsumerSettings)(
-        implicit F: Sync[F]): Stream[F, Consumer[K, V]] = {
+    def apply[K, V](
+        keyDeserializer: Deserializer[K],
+        valueDeserializer: Deserializer[V],
+        settings: ConsumerSettings)(implicit F: Sync[F]): Stream[F, Consumer[K, V]] = {
 
       Stream.bracket(
-        initConsumer[F, K, V](settings.nativeSettings,
-                              keyDeserializer,
-                              valueDeserializer))(c => Stream.emit(c).covary[F],
-                                                  c => closeConsumer(c))
+        initConsumer[F, K, V](settings.nativeSettings, keyDeserializer, valueDeserializer))(
+        c => Stream.emit(c).covary[F],
+        c => closeConsumer(c))
 
     }
   }
 
-  private def batchStream[F[_]: Async, K, V](consumer: Consumer[K, V],
-                                             subscription: Subscription,
-                                             settings: ConsumerSettings,
-                                             pollCommitEc: ExecutionContext)(
+  private def batchStream[F[_]: Async, K, V](
+      consumer: Consumer[K, V],
+      subscription: Subscription,
+      settings: ConsumerSettings,
+      pollCommitEc: ExecutionContext)(
       implicit ec: ExecutionContext): Stream[F, ConsumerRecords[K, V]] = {
 
     for {
       _ <- Stream.eval(subscribeConsumer(consumer, subscription))
       batch <- Stream
         .repeatEval(
-          runOnEc(Sync[F].delay(consumer.poll(settings.pollTimeout.toMillis)),
-                  pollCommitEc))
+          runOnEc(Sync[F].delay(consumer.poll(settings.pollTimeout.toMillis)), pollCommitEc))
         .filter(_.count() > 0)
     } yield batch
   }
@@ -272,9 +271,8 @@ object Consuming {
       nativeSettings: Map[String, AnyRef],
       keyDeserializer: Deserializer[K],
       valueDeserializer: Deserializer[V]): F[Consumer[K, V]] = Sync[F].delay {
-    val consumer = new KafkaConsumer[K, V](nativeSettings.asJava,
-                                           keyDeserializer,
-                                           valueDeserializer)
+    val consumer =
+      new KafkaConsumer[K, V](nativeSettings.asJava, keyDeserializer, valueDeserializer)
 
     log.debug(s"Consumer initiated with kafkaConsumerSettings: $nativeSettings")
 
@@ -285,8 +283,7 @@ object Consuming {
     Sync[F].delay(c.close()) >> Sync[F].delay(log.debug(s"Consumer closed"))
   }
 
-  private def processBatchChunkAndCommit[F[_]: Effect, K, V, O](
-      consumer: Consumer[K, V])(
+  private def processBatchChunkAndCommit[F[_]: Effect, K, V, O](consumer: Consumer[K, V])(
       batch: ConsumerRecords[K, V],
       f: Chunk[ConsumerRecord[K, V]] => F[Chunk[(O, Offset)]],
       parallelism: Int,
@@ -323,12 +320,11 @@ object Consuming {
       .flatMap(Stream.emits(_))
   }
 
-  private def processBatchWithPipeAndCommit[F[_]: Effect, K, V, O](
-      consumer: Consumer[K, V])(batch: ConsumerRecords[K, V],
-                                pipe: Pipe[F, ConsumerRecord[K, V], O],
-                                parallelism: Int,
-                                pollCommitEc: ExecutionContext)(
-      implicit ec: ExecutionContext): Stream[F, BatchResults[O]] = {
+  private def processBatchWithPipeAndCommit[F[_]: Effect, K, V, O](consumer: Consumer[K, V])(
+      batch: ConsumerRecords[K, V],
+      pipe: Pipe[F, ConsumerRecord[K, V], O],
+      parallelism: Int,
+      pollCommitEc: ExecutionContext)(implicit ec: ExecutionContext): Stream[F, BatchResults[O]] = {
 
     log.debug(s"Processing batch with pipe $batch")
 
@@ -357,12 +353,11 @@ object Consuming {
       }
   }
 
-  private def processBatchAndCommit[F[_]: Effect, K, V, O](
-      consumer: Consumer[K, V])(batch: ConsumerRecords[K, V],
-                                f: ConsumerRecord[K, V] => F[O],
-                                parallelism: Int,
-                                pollCommitEc: ExecutionContext)(
-      implicit ec: ExecutionContext): Stream[F, O] = {
+  private def processBatchAndCommit[F[_]: Effect, K, V, O](consumer: Consumer[K, V])(
+      batch: ConsumerRecords[K, V],
+      f: ConsumerRecord[K, V] => F[O],
+      parallelism: Int,
+      pollCommitEc: ExecutionContext)(implicit ec: ExecutionContext): Stream[F, O] = {
 
     log.debug(s"Processing batch $batch")
 
@@ -373,8 +368,7 @@ object Consuming {
       Stream
         .emits(records)
         .evalMap { record =>
-          f(record).map(result =>
-            RecordResult(result, new OffsetAndMetadata(record.offset() + 1)))
+          f(record).map(result => RecordResult(result, new OffsetAndMetadata(record.offset() + 1)))
         }
         .fold(PartitionResults.empty[O](tp, offsetAndMetadata))(_ :+ _)
     }
@@ -393,8 +387,8 @@ object Consuming {
   private def commit[F[_]: Async](
       consumer: Consumer[_, _],
       commits: Map[TopicPartition, OffsetAndMetadata],
-      pollCommitEc: ExecutionContext)(implicit ec: ExecutionContext)
-    : F[Map[TopicPartition, OffsetAndMetadata]] = {
+      pollCommitEc: ExecutionContext)(
+      implicit ec: ExecutionContext): F[Map[TopicPartition, OffsetAndMetadata]] = {
 
     // We need to use synchronous commit, as the async one is buffering the calls and it will not call the callback
     // before another commitAsync or commitSync is invoked.

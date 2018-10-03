@@ -26,6 +26,7 @@ import scala.concurrent.duration.Duration
   * @param nativeSettings The native Kafka consumer settings. To see what is available take a look into
   *                       org.apache.kafka.clients.consumer.ConsumerConfig class.
   */
-case class ConsumerSettings(pollTimeout: Duration,
-                            maxParallelism: Int,
-                            nativeSettings: Map[String, AnyRef])
+case class ConsumerSettings(
+    pollTimeout: Duration,
+    maxParallelism: Int,
+    nativeSettings: Map[String, AnyRef])

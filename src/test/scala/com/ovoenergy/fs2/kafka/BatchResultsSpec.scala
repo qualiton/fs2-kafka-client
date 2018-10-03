@@ -22,10 +22,8 @@ class BatchResultsSpec extends BaseUnitSpec {
         val offsetAndMetadata = new OffsetAndMetadata(34)
         val results = Vector(1, 2, 3)
 
-        val underTest = BatchResults.empty[Int] :+ PartitionResults(
-          topicPartition,
-          offsetAndMetadata,
-          results)
+        val underTest = BatchResults
+          .empty[Int] :+ PartitionResults(topicPartition, offsetAndMetadata, results)
 
         underTest.toCommit shouldBe Map(topicPartition -> offsetAndMetadata)
         underTest.results shouldBe results
@@ -49,8 +47,9 @@ class BatchResultsSpec extends BaseUnitSpec {
 
         val underTest = BatchResults.empty[Int] :+ one :+ two
 
-        underTest.toCommit shouldBe Map(one.topicPartition -> one.offset,
-                                        two.topicPartition -> two.offset)
+        underTest.toCommit shouldBe Map(
+          one.topicPartition -> one.offset,
+          two.topicPartition -> two.offset)
         underTest.results should contain theSameElementsInOrderAs one.results ++ two.results
       }
     }

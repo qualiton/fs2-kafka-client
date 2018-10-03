@@ -23,8 +23,7 @@ private[kafka] case class BatchResults[O](
     toCommit: Map[TopicPartition, OffsetAndMetadata],
     results: Vector[O]) {
   def :+(pr: PartitionResults[O]): BatchResults[O] =
-    copy(toCommit = toCommit + (pr.topicPartition -> pr.offset),
-         results = results ++ pr.results)
+    copy(toCommit = toCommit + (pr.topicPartition -> pr.offset), results = results ++ pr.results)
 }
 
 private[kafka] object BatchResults {

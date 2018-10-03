@@ -18,8 +18,7 @@ class PartitionResultsSpec extends BaseUnitSpec {
       "contain the given result and offset" in {
         val underTest = PartitionResults.empty[Int](
           new TopicPartition("test-1", 0),
-          new OffsetAndMetadata(9)) :+ RecordResult(1,
-                                                    new OffsetAndMetadata(123))
+          new OffsetAndMetadata(9)) :+ RecordResult(1, new OffsetAndMetadata(123))
 
         underTest.results should contain only 1
         underTest.offset shouldBe new OffsetAndMetadata(123)
@@ -28,8 +27,7 @@ class PartitionResultsSpec extends BaseUnitSpec {
       "retain topic and partition" in {
 
         val initial =
-          PartitionResults.empty[Int](new TopicPartition("test-1", 0),
-                                      new OffsetAndMetadata(9))
+          PartitionResults.empty[Int](new TopicPartition("test-1", 0), new OffsetAndMetadata(9))
 
         val underTest = initial :+ RecordResult(1, new OffsetAndMetadata(123))
 
@@ -40,8 +38,7 @@ class PartitionResultsSpec extends BaseUnitSpec {
     "two results are added" should {
       "contain all the results in order" in {
         val initial =
-          PartitionResults.empty[Int](new TopicPartition("test-1", 0),
-                                      new OffsetAndMetadata(9))
+          PartitionResults.empty[Int](new TopicPartition("test-1", 0), new OffsetAndMetadata(9))
 
         val resultOne = RecordResult(1, new OffsetAndMetadata(123))
         val resultTwo = RecordResult(2, new OffsetAndMetadata(124))
@@ -53,8 +50,7 @@ class PartitionResultsSpec extends BaseUnitSpec {
 
       "contain the last result offset" in {
         val initial =
-          PartitionResults.empty[Int](new TopicPartition("test-1", 0),
-                                      new OffsetAndMetadata(9))
+          PartitionResults.empty[Int](new TopicPartition("test-1", 0), new OffsetAndMetadata(9))
 
         val resultOne = RecordResult(1, new OffsetAndMetadata(123))
         val resultTwo = RecordResult(2, new OffsetAndMetadata(124))
