@@ -18,7 +18,7 @@ package com.ovoenergy.fs2.kafka
 
 import java.util.concurrent.{Executors, ThreadFactory}
 
-import cats.effect.{Sync, Async, Effect}
+import cats.effect.{Async, Effect, Sync}
 import cats.syntax.all._
 import com.ovoenergy.fs2.kafka.Consuming._
 import fs2._
@@ -128,7 +128,7 @@ object Consuming {
         ec: ExecutionContext): Stream[F, ConsumerRecord[K, V]] = {
 
       defaultPollCommitEcStream.flatMap { pollCommitEc =>
-        consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        consumerStream[F](keyDeserializer, valueDeserializer, settings, pollCommitEc)
           .flatMap { consumer =>
             batchStream(consumer, subscription, settings, pollCommitEc)
               .flatMap { batch =>
@@ -151,7 +151,7 @@ object Consuming {
         ec: ExecutionContext): Stream[F, O] = {
 
       defaultPollCommitEcStream.flatMap { pollCommitEc =>
-        consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        consumerStream[F](keyDeserializer, valueDeserializer, settings, pollCommitEc)
           .flatMap { consumer =>
             batchStream(consumer, subscription, settings, pollCommitEc)
               .flatMap { batch =>
@@ -179,7 +179,7 @@ object Consuming {
         ec: ExecutionContext): Stream[F, O] = {
 
       defaultPollCommitEcStream.flatMap { pollCommitEc =>
-        consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        consumerStream[F](keyDeserializer, valueDeserializer, settings, pollCommitEc)
           .flatMap { consumer =>
             batchStream(consumer, subscription, settings, pollCommitEc)
               .flatMap { batch =>
@@ -206,7 +206,7 @@ object Consuming {
         ec: ExecutionContext): Stream[F, BatchResults[O]] = {
 
       defaultPollCommitEcStream.flatMap { pollCommitEc =>
-        consumerStream[F](keyDeserializer, valueDeserializer, settings)
+        consumerStream[F](keyDeserializer, valueDeserializer, settings, pollCommitEc)
           .flatMap { consumer =>
             batchStream(
               consumer,
@@ -231,12 +231,15 @@ object Consuming {
     def apply[K, V](
         keyDeserializer: Deserializer[K],
         valueDeserializer: Deserializer[V],
-        settings: ConsumerSettings)(implicit F: Sync[F]): Stream[F, Consumer[K, V]] = {
+        settings: ConsumerSettings,
+        pollCommitEc: ExecutionContext)(
+        implicit F: Async[F],
+        ec: ExecutionContext): Stream[F, Consumer[K, V]] = {
 
       Stream.bracket(
         initConsumer[F, K, V](settings.nativeSettings, keyDeserializer, valueDeserializer))(
         c => Stream.emit(c).covary[F],
-        c => closeConsumer(c))
+        c => closeConsumer(c, pollCommitEc))
 
     }
   }
@@ -279,8 +282,9 @@ object Consuming {
     consumer
   }
 
-  private def closeConsumer[F[_]: Sync, K, V](c: Consumer[K, V]): F[Unit] = {
-    Sync[F].delay(c.close()) >> Sync[F].delay(log.debug(s"Consumer closed"))
+  private def closeConsumer[F[_]: Async, K, V](c: Consumer[K, V], pollCommitEc: ExecutionContext)(
+      implicit ec: ExecutionContext): F[Unit] = {
+    runOnEc(Sync[F].delay(c.close()) >> Sync[F].delay(log.debug(s"Consumer closed")), pollCommitEc)
   }
 
   private def processBatchChunkAndCommit[F[_]: Effect, K, V, O](consumer: Consumer[K, V])(
