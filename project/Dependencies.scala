@@ -12,7 +12,7 @@ object Dependencies {
   }
 
   object kafka {
-    private val version = "1.0.0"
+    private val version = "1.1.1"
 
     lazy val clients = "org.apache.kafka" % "kafka-clients" % version
   }
@@ -31,5 +31,5 @@ object Dependencies {
     val classic = "ch.qos.logback" % "logback-classic" % version
   }
 
-  lazy val embeddedKafka = "net.manub" %% "scalatest-embedded-kafka" % "1.0.0"
+  lazy val embeddedKafka = "net.manub" %% "scalatest-embedded-kafka" % "1.1.1"
 }
